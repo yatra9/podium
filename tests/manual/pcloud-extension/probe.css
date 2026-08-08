@@ -1,0 +1,15 @@
+:root { color-scheme: light dark; font-family: system-ui, sans-serif; }
+body { margin: 0; }
+main { max-width: 58rem; margin: 2rem auto; padding: 0 1.25rem 3rem; }
+.row, .actions { display: flex; gap: .75rem; flex-wrap: wrap; margin: .75rem 0 1.5rem; }
+input, select { min-width: 12rem; flex: 1; padding: .6rem; }
+button { padding: .6rem .9rem; cursor: pointer; }
+button:disabled { cursor: not-allowed; opacity: .55; }
+dl { display: grid; grid-template-columns: 10rem 1fr; gap: .5rem; }
+dt { font-weight: 700; }
+dd { margin: 0; overflow-wrap: anywhere; }
+section { border-top: 1px solid #8886; margin-top: 2rem; padding-top: 1rem; }
+.file { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .5rem 0; }
+.success { color: #188038; }
+.failure { color: #c5221f; }
+code { user-select: all; }

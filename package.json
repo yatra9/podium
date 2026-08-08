@@ -1,0 +1,15 @@
+{
+  "name": "podium",
+  "private": true,
+  "version": "0.0.0",
+  "scripts": {
+    "pretest": "python build.py --font",
+    "test": "playwright test",
+    "test:headed": "playwright test --headed",
+    "probe:pcloud-web": "node tests/static-server.js",
+    "build:extension": "python build.py --extension"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.0"
+  }
+}
