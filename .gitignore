@@ -31,6 +31,12 @@ video/
 yin/
 test/
 test-js/
+node_modules/
+playwright-report/
+test-results/
+# Chrome's extension packager outputs the signed bundle and its private key.
+*.crx
+*.pem
 ext.old/
 # Scratch dir for upstream font downloads / experiments. The embedded font is
 # built by build_font.py from the one tracked binary, pristine lib/BravuraText.otf;

@@ -42,24 +42,37 @@ A Chrome/Edge browser extension is available for opening PDF scores directly fro
 
 ### Prerequisites
 
-- Python 3.x
+- [mise](https://mise.jdx.dev/)
 - openssl (for SSL certificate generation)
 - ffmpeg (optional, for piano sample processing)
 - emcc (Emscripten compiler, for YIN pitch detector worklet)
 - cairosvg or ImageMagick (optional, for PWA icon generation)
+
+Install the pinned core toolchain and development dependencies without activating
+mise in the shell:
+
+```bash
+mise install
+mise exec -- python -m pip install -r requirements-dev.txt
+mise exec -- npm install
+mise exec -- npx playwright install chromium
+```
+
+Run project tools with `mise exec --`; this repository does not use
+`mise activate`.
 
 ### Development Server
 
 Start the HTTPS development server:
 
 ```bash
-python3 serve.py
+mise exec -- python serve.py
 ```
 
 The server starts on port 9876 with a self-signed certificate. Generate the certificate first if needed:
 
 ```bash
-python3 build.py --cert
+mise exec -- python build.py --cert
 ```
 
 Navigate to `https://localhost:9876/pod.html` to use the application.
@@ -67,6 +80,25 @@ Navigate to `https://localhost:9876/pod.html` to use the application.
 ### Build System
 
 This project uses a custom Python-based build system.
+
+### Personal Chrome extension
+
+Build the self-contained application, then load `build/extension` as an
+unpacked extension from `chrome://extensions`:
+
+```bash
+mise exec -- npm run build:extension
+```
+
+The personal build exposes pCloud only in the extension context. Its temporary
+direct-login implementation remembers the email address locally. When selected
+in the login dialog, the password is kept in `chrome.storage.session` memory and
+is cleared when Chrome exits; it is never written to local or sync storage.
+
+If `build/yin-worklet.js` has not already been built with Emscripten, this
+command installs a no-op fallback worklet. pCloud Load/Save remains available,
+but live pitch detection is disabled until `mise exec -- python build.py --yin`
+is run with `emcc` available and the extension is rebuilt/reloaded.
 
 #### Build Commands
 

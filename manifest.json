@@ -1,0 +1,23 @@
+{
+  "manifest_version": 3,
+  "name": "Podium (personal pCloud build)",
+  "version": "0.1.0",
+  "description": "Podium sheet-music studio with personal pCloud direct-login support.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAsh4s2p1CKbku06fZ6EjDXlEmhQRtHdV7yjv6Prw29rIHiMiDwQbkFl48LhOnxSUGmJby+SPkFf7LYEe0XrsjGgRzsWb6zxqhuu83w9jRZPYn9WR/ZScRgHvnAl2fidjQMWrmwFrhCERESlp5Oey0BHZPYONDqFu36uisD+XKRqhKOokdqYX5zewSfp+u3rTnDas9RAP6Y5136X4mYRoPXXxV/XP5AQdWXZLBtL7dWkVZ+cgVr1IG68SGDwE0SHNSDR0xSDDnL/qaePdolizBZO8UdB69g0l2nBfMq7ozrulSQ5bGvD3yymnNwTX3bbunO24tt+Ip1GeXqdA/p+YptwIDAQAB",
+  "permissions": [
+    "identity",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://my.pcloud.com/*",
+    "https://api.pcloud.com/*",
+    "https://eapi.pcloud.com/*",
+    "https://*.pcloud.com/*"
+  ],
+  "background": {
+    "service_worker": "extension-background.js"
+  },
+  "action": {
+    "default_title": "Launch Podium"
+  }
+}

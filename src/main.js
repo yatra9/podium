@@ -283,7 +283,8 @@ async function main() {
     animate(_menu_.disk, { transform: "rotate(2turn)" }, { transform: "rotate(0)" }, `transform ${1000000 / _gs_}ms`);
     await new SharedBuffer().init() ;
     // Extension-specific code: load PDF from URL parameter if present
-    if (typeof chrome !== "undefined" && chrome.runtime?.id) {
+    if (typeof chrome !== "undefined" && chrome.runtime?.id &&
+        new URLSearchParams(location.search).has("url")) {
       let { loadPdfFromUrl } = await import("./ext.js");
       await loadPdfFromUrl();
     }
