@@ -90,10 +90,11 @@ unpacked extension from `chrome://extensions`:
 mise exec -- npm run build:extension
 ```
 
-The personal build exposes pCloud only in the extension context. Its temporary
-direct-login implementation remembers the email address locally. When selected
-in the login dialog, the password is kept in `chrome.storage.session` memory and
-is cleared when Chrome exits; it is never written to local or sync storage.
+The personal build exposes pCloud only in the extension context. OAuth is the
+recommended sign-in method and its access token is kept in
+`chrome.storage.session`, so it is cleared when Chrome exits. Direct Login
+remains available as a fallback; its optional remembered password uses the same
+session-only storage and is never written to local or sync storage.
 
 If `build/yin-worklet.js` has not already been built with Emscripten, this
 command installs a no-op fallback worklet. pCloud Load/Save remains available,
