@@ -46,3 +46,49 @@ test("pCloud maps a folder listing and downloads PDF bytes", async ({ page }) =>
 
   expect(result).toEqual({ directoryId: 42, fileId: 99, signature: "%PDF-" });
 });
+
+test("pCloud OAuth validates the redirect and restores its session token", async ({ page }) => {
+  const result = await page.evaluate(async () => {
+    const session = {};
+    let launches = 0;
+    window.chrome = {};
+    window.chrome.runtime = { id: "gdekbcnhempebaocajciooibhhgnbdjb" };
+    window.chrome.storage = {
+      session: {
+        get: async key => ({ [key]: session[key] }),
+        set: async values => Object.assign(session, values),
+        remove: async key => delete session[key],
+      },
+    };
+    window.chrome.identity = {
+      getRedirectURL: () => "https://gdekbcnhempebaocajciooibhhgnbdjb.chromiumapp.org/",
+      launchWebAuthFlow: async ({ url, interactive }) => {
+        launches++;
+        const state = new URL(url).searchParams.get("state");
+        if (!interactive) throw new Error("OAuth must be interactive");
+        return `https://gdekbcnhempebaocajciooibhhgnbdjb.chromiumapp.org/` +
+          `#access_token=test-token&token_type=bearer&hostname=eapi.pcloud.com&state=${state}`;
+      },
+    };
+
+    const first = new window._PCloudOAuthAuth_();
+    const firstAuth = await first.requestAuth();
+    const restored = new window._PCloudOAuthAuth_();
+    const restoredAuth = await restored.requestAuth();
+    return { firstAuth, restoredAuth, launches };
+  });
+
+  expect(result).toEqual({
+    firstAuth: {
+      apiHost: "eapi.pcloud.com",
+      params: {},
+      headers: { Authorization: "Bearer test-token" },
+    },
+    restoredAuth: {
+      apiHost: "eapi.pcloud.com",
+      params: {},
+      headers: { Authorization: "Bearer test-token" },
+    },
+    launches: 1,
+  });
+});

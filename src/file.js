@@ -1686,8 +1686,92 @@ class ODriveSrc extends CachedSrc {
   }
 }
 
+const PCLOUD_CLIENT_ID = "W569fmzwKBQ";
+const PCLOUD_API_HOSTS = new Set(["api.pcloud.com", "eapi.pcloud.com"]);
+
+function stylePCloudDialog(elm) {
+  // Generic Podium dialogs intentionally scale with the score UI and can
+  // become very large on desktop. Match the Open/Save panel instead.
+  elm.style.fontSize = "clamp(14px, 2vmin, 20px)";
+  elm.style.width = "min(28em, calc(100vw - 3em))";
+  elm.style.maxHeight = "calc(100vh - 3em)";
+  elm.style.overflowX = "hidden";
+}
+
 /**
- * Direct pCloud authentication for a personal Chrome-extension build.
+ * OAuth token-flow authentication for the pCloud Chrome extension.
+ * The provider boundary matches PCloudDirectAuth so file operations do not
+ * depend on the authentication mechanism.
+ */
+class PCloudOAuthAuth {
+  apiHost = null;
+  accessToken = null;
+  sessionRestored = false;
+
+  async restoreSession() {
+    if (this.sessionRestored) return;
+    this.sessionRestored = true;
+    let saved = (await chrome.storage.session.get("pcloud-oauth"))["pcloud-oauth"];
+    if (saved?.accessToken && PCLOUD_API_HOSTS.has(saved.apiHost)) {
+      this.accessToken = saved.accessToken;
+      this.apiHost = saved.apiHost;
+    }
+  }
+
+  async authenticate() {
+    if (!(window.chrome && chrome.runtime?.id && chrome.identity?.launchWebAuthFlow))
+      throw new Error("pCloud OAuth is available only in the Podium browser extension.");
+    await this.restoreSession();
+    if (this.accessToken && this.apiHost) return;
+
+    let redirectUri = chrome.identity.getRedirectURL();
+    let state = getPlainChallenge();
+    let authorizeUrl = new URL("https://my.pcloud.com/oauth2/authorize");
+    authorizeUrl.searchParams.set("client_id", PCLOUD_CLIENT_ID);
+    authorizeUrl.searchParams.set("response_type", "token");
+    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizeUrl.searchParams.set("state", state);
+
+    let responseUrl = await chrome.identity.launchWebAuthFlow({
+      url: authorizeUrl.href,
+      interactive: true,
+    });
+    if (!responseUrl || !responseUrl.startsWith(redirectUri))
+      throw new Error("pCloud OAuth returned an invalid redirect URI.");
+    let response = new URL(responseUrl);
+    let params = new URLSearchParams(response.hash.slice(1));
+    if (params.get("state") !== state)
+      throw new Error("pCloud OAuth state validation failed.");
+    let accessToken = params.get("access_token");
+    let apiHost = params.get("hostname");
+    if (!accessToken || !PCLOUD_API_HOSTS.has(apiHost))
+      throw new Error(params.get("error_description") || params.get("error") ||
+        "pCloud OAuth returned no access token or API host.");
+
+    this.accessToken = accessToken;
+    this.apiHost = apiHost;
+    await chrome.storage.session.set({
+      "pcloud-oauth": { accessToken, apiHost },
+    });
+  }
+
+  async requestAuth() {
+    await this.authenticate();
+    return {
+      apiHost: this.apiHost,
+      params: {},
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    };
+  }
+
+  async forget() {
+    this.apiHost = this.accessToken = null;
+    await chrome.storage.session.remove("pcloud-oauth");
+  }
+}
+
+/**
+ * Direct pCloud authentication retained as a personal fallback.
  *
  * The provider boundary is intentionally separate from PCloudSrc so it can be
  * replaced by an OAuth implementation without changing file operations.
@@ -1697,7 +1781,6 @@ class ODriveSrc extends CachedSrc {
  * issue reusable auth tokens, so every request receives a fresh digest.
  */
 class PCloudDirectAuth {
-  apiHosts = new Set(["api.pcloud.com", "eapi.pcloud.com"]);
   apiHost = localStorage.getItem("pcloud-api-host") || "api.pcloud.com";
   email = null;
   password = null;
@@ -1742,7 +1825,7 @@ class PCloudDirectAuth {
           let email = inputs.email.value.trim().toLowerCase();
           let password = inputs.password.value;
           let apiHost = inputs.region.value;
-          if (!email || !password || !this.apiHosts.has(apiHost)) return;
+          if (!email || !password || !PCLOUD_API_HOSTS.has(apiHost)) return;
           inputs.password.value = "";
           this.email = email;
           this.password = password;
@@ -1757,13 +1840,7 @@ class PCloudDirectAuth {
           resolve();
         }
       );
-      // Generic Podium dialogs intentionally scale with the score UI and can
-      // become very large on desktop. Keep this form at the same visual scale
-      // as the Open/Save panel while remaining usable on a narrow viewport.
-      elm.style.fontSize = "clamp(14px, 2vmin, 20px)";
-      elm.style.width = "min(28em, calc(100vw - 3em))";
-      elm.style.maxHeight = "calc(100vh - 3em)";
-      elm.style.overflowX = "hidden";
+      stylePCloudDialog(elm);
       let inputs = dataIndex("tag", elm);
       inputs.region.value = this.apiHost;
       inputs.email.value = this.email || "";
@@ -1798,10 +1875,66 @@ class PCloudDirectAuth {
   }
 }
 
+/** Select OAuth by default while keeping Direct Login available explicitly. */
+class PCloudAuth {
+  oauth = new PCloudOAuthAuth();
+  direct = new PCloudDirectAuth();
+  active = null;
+
+  async authenticate() {
+    if (this.active) return this.active.authenticate();
+    await this.oauth.restoreSession();
+    if (this.oauth.accessToken) {
+      this.active = this.oauth;
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      let elm = dialog(
+        `Connect to pCloud<br><br>
+         <small>OAuth is recommended. Podium will not receive your pCloud password.</small>`,
+        {
+          "Sign in with pCloud": { svg: "pCloud" },
+          "Direct login": { svg: "pCloud" },
+          Cancel: { svg: "Cancel" },
+        },
+        async (_event, _prop, tag, args) => {
+          if (tag == "Cancel") {
+            args.close();
+            return reject(new Error("pCloud login cancelled.", { cause: "cancelled" }));
+          }
+          args.close();
+          this.active = tag == "Direct login" ? this.direct : this.oauth;
+          try {
+            await this.active.authenticate();
+            resolve();
+          } catch (error) {
+            this.active = null;
+            reject(error);
+          }
+        }
+      );
+      stylePCloudDialog(elm);
+      elm.addEventListener("cancel", () =>
+        reject(new Error("pCloud login cancelled.", { cause: "cancelled" })), { once: true });
+    });
+  }
+
+  async requestAuth() {
+    await this.authenticate();
+    return this.active.requestAuth();
+  }
+
+  async forget() {
+    this.active = null;
+    await Promise.all([this.oauth.forget(), this.direct.forget()]);
+  }
+}
+
 class PCloudSrc extends CachedSrc {
   source = Score.sources.pcloud;
 
-  constructor(authProvider = new PCloudDirectAuth()) {
+  constructor(authProvider = new PCloudAuth()) {
     super();
     this.authProvider = authProvider;
     this.cache[""].id = 0;
@@ -2959,3 +3092,4 @@ class FileSystemView extends FileListView {
   }
 }
 window._FileSrc_ = FileSrc; window._CachedSrc_ = CachedSrc; window._PCloudSrc_ = PCloudSrc;
+window._PCloudOAuthAuth_ = PCloudOAuthAuth;
