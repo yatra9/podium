@@ -111,11 +111,27 @@ question but measures nothing: the whole request is round-trip latency. Saving
 an annotated score uploads megabytes, so the deployed-origin run should also use
 a realistic size.
 
-From localhost the preflighted `PUT` fails with `Failed to fetch`, as predicted,
-and the `multipart/form-data` `POST` stores 32812 bytes and reads back byte for
-byte. A deployed-origin run is still required: `getfilelink` already proved that
-pCloud applies referer checks that localhost does not see, and `uploadfile` may
-do the same.
+### Write result
+
+Confirmed from the deployed origin `https://yatra9.github.io`, in the same run
+where `getfilelink` was refused with `7010 Invalid link referer`. The preflighted
+`PUT` fails with `Failed to fetch` at both sizes, and the `multipart/form-data`
+`POST` succeeds at both:
+
+| Probe size | Upload | Round trip |
+| --- | --- | --- |
+| 32812 bytes | 606 ms (53 KiB/s) | byte-exact |
+| 21007404 bytes | 5723 ms (3585 KiB/s) | byte-exact |
+
+The small figure is round-trip latency, not throughput. At a realistic score
+size the upload sustains about 3.5 MiB/s, against about 5 MiB/s for the `getzip`
+download of a comparable file, so a save costs a few seconds rather than being
+impractical.
+
+So a web origin can both read and write pCloud files with per-request digest
+authentication. `PCloudSrc.putFileSrc` has to move from `PUT` with
+`application/octet-stream` to a `POST` built from a `FormData`. That request is
+simple in the extension too, so no platform branch is needed.
 
 Requests pass the token as a query parameter rather than an `Authorization`
 header. `api.pcloud.com` omits `Access-Control-Allow-Headers` from its preflight
