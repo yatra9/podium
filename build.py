@@ -472,9 +472,9 @@ PODIUM_PAGE_PATCHES = [
 ]
 
 def build_podium_page(outFileName):
-    with open("src/pod.html") as f:
+    with open("src/pod.html", encoding='utf-8') as f:
         page = f.read()
-    with open("LICENSE") as f:
+    with open("LICENSE", encoding='utf-8') as f:
         license = f.read()
     for old, new in PODIUM_PAGE_PATCHES:
         if page.count(old) != 1:
@@ -484,7 +484,7 @@ def build_podium_page(outFileName):
     # the Packager reads its input as javascript, and would strip, say, the
     # rest of any line of html text containing "//".
     head, tail = page.split(PODIUM_PAGE_INCLUDE)
-    with open(outFileName, "w") as outFileObj:
+    with open(outFileName, "w", encoding='utf-8', newline='\n') as outFileObj:
         outFileObj.write(head)
         Packager("src/pod.html", StringIO(PODIUM_PAGE_INCLUDE), outFileObj)
         outFileObj.write(tail)
