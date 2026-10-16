@@ -46,6 +46,18 @@
       </section>
 
       <section>
+        <h2>Can a web origin write a file back?</h2>
+        <p>Reading was the question that forced pCloud support into the extension, but writing was never tested from a web origin, and Podium's current upload cannot work there. <code>PCloudSrc.putFileSrc</code> sends <code>PUT</code> with <code>Content-Type: application/octet-stream</code>, which is not a CORS-safelisted value, so the request is preflighted — and <code>api.pcloud.com</code> answers <code>OPTIONS</code> with <code>Access-Control-Allow-Origin</code> and <code>Access-Control-Allow-Methods</code> but no <code>Access-Control-Allow-Headers</code>.</p>
+        <p><code>multipart/form-data</code> is one of the three safelisted <code>Content-Type</code> values, so a <code>POST</code> built from a <code>FormData</code> is a simple request and is never preflighted. This test runs both, then reads the file back with <code>getzip</code> and compares every byte: a write that returns <code>result 0</code> is worthless to a score annotator if the annotations do not survive the trip.</p>
+        <p>The test works in its own folder, <code>/podium-write-probe</code>, uploads one file of random bytes, and deletes what it created. If the folder already existed it is left in place and only this run's uploads are removed. Re-enter the email and password first: the password is never kept between tests.</p>
+        <p>A few tens of kilobytes answer the CORS question but measure nothing, because the whole request is round-trip latency. Saving an annotated score uploads megabytes, so run the deployed-origin test at a realistic size as well.</p>
+        <div class="row">
+          <label>Probe size <input id="writeSize" type="number" value="32" min="1" max="65536" step="1"> KiB</label>
+          <button id="testWrite" type="button">Test write (uploads, verifies, then deletes)</button>
+        </div>
+      </section>
+
+      <section>
         <h2>Root PDFs</h2>
         <div id="files"></div>
       </section>

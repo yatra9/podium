@@ -4,6 +4,8 @@ main { max-width: 62rem; margin: 2rem auto; padding: 0 1.25rem 3rem; }
 .warning { padding: 1rem; border: 2px solid #d99b00; background: #d99b0022; }
 .row { display: flex; gap: .75rem; flex-wrap: wrap; margin: 1.5rem 0; }
 input, select { min-width: 12rem; flex: 1; padding: .6rem; }
+.row label { display: flex; align-items: center; gap: .5rem; }
+.row label input { min-width: 6rem; }
 button { padding: .6rem .9rem; cursor: pointer; }
 button:disabled { cursor: not-allowed; opacity: .55; }
 dl { display: grid; grid-template-columns: 10rem 1fr; gap: .5rem; }
