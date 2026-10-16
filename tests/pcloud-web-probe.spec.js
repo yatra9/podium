@@ -199,29 +199,68 @@ test("the probe reports a getzip JSON error envelope as a failure", async ({ pag
 });
 
 /**
- * Returns the single uploaded file's bytes from a multipart/form-data body.
- * Playwright hands back the raw body, and the probe must be shown to have sent
- * the bytes unaltered, so the part is parsed rather than trusted.
+ * Returns the single uploaded file's name and bytes from a multipart/form-data
+ * body. Playwright hands back the raw body, and the probe must be shown to have
+ * sent the bytes unaltered, so the part is parsed rather than trusted.
  */
 function readSinglePart(body, contentType) {
   const boundary = /boundary=(.+)$/.exec(contentType)?.[1];
   expect(boundary).toBeTruthy();
-  const start = body.indexOf("\r\n\r\n") + 4;
-  const end = body.lastIndexOf(`\r\n--${boundary}--`);
-  return body.subarray(start, end);
+  const headerEnd = body.indexOf("\r\n\r\n");
+  const name = /filename="([^"]*)"/.exec(body.subarray(0, headerEnd).toString("utf8"))?.[1];
+  expect(name).toBeTruthy();
+  return { name, bytes: body.subarray(headerEnd + 4, body.lastIndexOf(`\r\n--${boundary}--`)) };
 }
 
-/** Serves the folder, upload, read-back and delete methods of the write test. */
+/**
+ * Serves the write and metadata tests from a small in-memory tree, so that the
+ * listings answer what the preceding calls actually did rather than a fixed
+ * script. deletefolder refuses a folder with contents, as the real one does,
+ * which is what makes the ordering of the metadata test meaningful.
+ */
 async function mockWriteApi(page, { folderCreated = true, uploads, deletes } = {}) {
-  let storedBytes = null;
-  await page.route("https://api.pcloud.com/getdigest**", route => route.fulfill({
+  const probeFolderId = 4242;
+  const folders = new Map([[probeFolderId, { name: "podium-write-probe", parent: 0 }]]);
+  const files = new Map();
+  let nextFolderId = 5151;
+  let nextFileId = 777;
+
+  const json = (route, payload) => route.fulfill({
     contentType: "application/json",
-    body: JSON.stringify({ result: 0, digest: "mock-digest", expires: "never" }),
-  }));
-  await page.route("https://api.pcloud.com/createfolderifnotexists**", route => route.fulfill({
-    contentType: "application/json",
-    body: JSON.stringify({ result: 0, created: folderCreated, metadata: { folderid: 4242 } }),
-  }));
+    body: JSON.stringify({ result: 0, ...payload }),
+  });
+  const params = route => new URL(route.request().url()).searchParams;
+
+  await page.route("https://api.pcloud.com/getdigest**", route =>
+    json(route, { digest: "mock-digest", expires: new Date(Date.now() + 30000).toUTCString() }));
+  // Playwright uses the route registered last, and "createfolder**" matches
+  // createfolderifnotexists too, so the narrower method is registered after it.
+  // "deletefolder**" and deletefolderrecursive are ordered for the same reason.
+  await page.route("https://api.pcloud.com/createfolder**", route => {
+    const folderid = nextFolderId++;
+    folders.set(folderid, { name: params(route).get("name"), parent: Number(params(route).get("folderid")) });
+    json(route, { metadata: { folderid, name: folders.get(folderid).name } });
+  });
+  await page.route("https://api.pcloud.com/createfolderifnotexists**", route =>
+    json(route, { created: folderCreated, metadata: { folderid: probeFolderId } }));
+  await page.route("https://api.pcloud.com/listfolder**", route => {
+    const parent = Number(params(route).get("folderid"));
+    const contents = [
+      ...[...folders].filter(([, folder]) => folder.parent === parent)
+        .map(([folderid, folder]) => ({ isfolder: true, folderid, name: folder.name })),
+      ...[...files].filter(([, file]) => file.parent === parent)
+        .map(([fileid, file]) => ({ isfolder: false, fileid, name: file.name, size: file.bytes.length })),
+    ];
+    json(route, { metadata: { folderid: parent, contents } });
+  });
+  await page.route("https://api.pcloud.com/renamefolder**", route => {
+    folders.get(Number(params(route).get("folderid"))).name = params(route).get("toname");
+    json(route, {});
+  });
+  await page.route("https://api.pcloud.com/renamefile**", route => {
+    files.get(Number(params(route).get("fileid"))).name = params(route).get("toname");
+    json(route, {});
+  });
   await page.route("https://api.pcloud.com/uploadfile**", route => {
     const request = route.request();
     const contentType = request.headers()["content-type"] || "";
@@ -229,24 +268,33 @@ async function mockWriteApi(page, { folderCreated = true, uploads, deletes } = {
     // Stand in for the preflight api.pcloud.com never allows.
     if (request.method() !== "POST" || !contentType.startsWith("multipart/form-data"))
       return route.abort("failed");
-    storedBytes = readSinglePart(request.postDataBuffer(), contentType);
-    route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({
-        result: 0,
-        metadata: [{ fileid: 777, name: "podium-write-probe.pdf", size: storedBytes.length }],
-      }),
-    });
+    const part = readSinglePart(request.postDataBuffer(), contentType);
+    const fileid = nextFileId++;
+    files.set(fileid, { name: part.name, parent: Number(params(route).get("folderid")), bytes: part.bytes });
+    json(route, { metadata: [{ fileid, name: part.name, size: part.bytes.length }] });
   });
-  await page.route("https://api.pcloud.com/getzip**", route => route.fulfill({
-    contentType: "application/zip",
-    body: buildZip("podium-write-probe.pdf", storedBytes),
-  }));
-  for (const method of ["deletefolderrecursive", "deletefile"])
-    await page.route(`https://api.pcloud.com/${method}**`, route => {
-      deletes?.push(method);
-      route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: 0 }) });
-    });
+  await page.route("https://api.pcloud.com/getzip**", route => {
+    const file = files.get(Number(params(route).get("fileids")));
+    route.fulfill({ contentType: "application/zip", body: buildZip(file.name, file.bytes) });
+  });
+  await page.route("https://api.pcloud.com/deletefile**", route => {
+    deletes?.push("deletefile");
+    files.delete(Number(params(route).get("fileid")));
+    json(route, {});
+  });
+  await page.route("https://api.pcloud.com/deletefolder**", route => {
+    deletes?.push("deletefolder");
+    const folderid = Number(params(route).get("folderid"));
+    if ([...folders.values()].some(folder => folder.parent === folderid) ||
+        [...files.values()].some(file => file.parent === folderid))
+      return json(route, { result: 2006, error: "Folder is not empty." });
+    folders.delete(folderid);
+    json(route, {});
+  });
+  await page.route("https://api.pcloud.com/deletefolderrecursive**", route => {
+    deletes?.push("deletefolderrecursive");
+    json(route, {});
+  });
 }
 
 /** Fills the credentials the write test re-reads from the form on every run. */
@@ -275,17 +323,45 @@ test("the probe writes a file back and verifies the round trip byte for byte", a
     /the round trip is byte-exact: \d+ bytes written and read back/,
   ]);
 
-  expect(uploads.map(upload => upload.method)).toEqual(["PUT", "POST"]);
+  // The second POST is the metadata test's throwaway file in the subfolder.
+  expect(uploads.map(upload => upload.method)).toEqual(["PUT", "POST", "POST"]);
   expect(uploads[0].contentType).toBe("application/octet-stream");
   expect(uploads[1].contentType).toMatch(/^multipart\/form-data; boundary=/);
+  expect(uploads[2].contentType).toMatch(/^multipart\/form-data; boundary=/);
   // The folder was created by this run, so it is removed whole. Cleanup runs
   // after the last pass, so wait for it rather than for the verdict.
   await expect(page.locator("#diagnostics li").last())
     .toHaveText(/Deleted \/podium-write-probe and everything this test put in it\./);
-  expect(deletes).toEqual(["deletefolderrecursive"]);
+  // The metadata test removes its own file and folder before the cleanup runs,
+  // and deletefolder must come after deletefile or the real one would refuse.
+  expect(deletes).toEqual(["deletefile", "deletefolder", "deletefolderrecursive"]);
   // The password must not survive the test in the form.
   expect(await page.inputValue("#password")).toBe("");
   expect(errors).toEqual([]);
+});
+
+test("the probe exercises every metadata method Podium calls", async ({ page }) => {
+  const methods = [];
+  await mockWriteApi(page);
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.hostname === "api.pcloud.com") methods.push(url.pathname.slice(1));
+  });
+
+  await startWriteTest(page);
+
+  await expect(page.locator("#diagnostics li.success")).toContainText([
+    /all five untested metadata methods work with per-request digest authentication/,
+  ]);
+  await expect(page.locator("#diagnostics li.failure"))
+    .toHaveText([/PREFLIGHTED PUT UPLOAD FAIL:/]);
+  // Every method PCloudSrc calls must have been reached, getfilelink aside: it
+  // is the one being replaced by getzip.
+  expect(new Set(methods)).toEqual(new Set([
+    "getdigest", "createfolderifnotexists", "uploadfile", "getzip",
+    "createfolder", "listfolder", "renamefolder", "renamefile",
+    "deletefile", "deletefolder", "deletefolderrecursive",
+  ]));
 });
 
 test("the probe leaves a pre-existing folder in place and deletes only its own file", async ({ page }) => {
@@ -296,7 +372,29 @@ test("the probe leaves a pre-existing folder in place and deletes only its own f
   await expect(page.locator("#diagnostics li.success"))
     .toContainText([/\/podium-write-probe already existed/]);
   await expect(page.locator("#diagnostics li")).toContainText([/Deleted the probe file \(fileid 777\)/]);
-  expect(deletes).toEqual(["deletefile"]);
+  // The first two are the metadata test's own; only the last is the cleanup,
+  // which must not touch the folder it did not create.
+  expect(deletes).toEqual(["deletefile", "deletefolder", "deletefile"]);
+});
+
+test("the probe reuses one digest across requests and reports the window", async ({ page }) => {
+  const digests = [];
+  await mockWriteApi(page);
+  page.on("request", request => {
+    const url = new URL(request.url());
+    if (url.pathname === "/getdigest") digests.push(url.href);
+  });
+
+  await page.goto("/pcloud-web/probe.html");
+  await page.fill("#email", "probe@example.test");
+  await page.fill("#password", "mock-password");
+  await page.click("#testDigestReuse");
+
+  await expect(page.locator("#diagnostics li.success").last())
+    .toHaveText(/one digest served 3 listfolder calls in \d+ ms, against \d+ ms for 3 calls each signed with its own digest \([\d.]+x\)\. The digest window is [\d.]+ s\./);
+  // One digest for the reused pass, then one per call for the comparison.
+  expect(digests).toHaveLength(4);
+  expect(await page.inputValue("#password")).toBe("");
 });
 
 test("the probe rejects an out-of-range probe size before calling pCloud", async ({ page }) => {

@@ -133,6 +133,37 @@ authentication. `PCloudSrc.putFileSrc` has to move from `PUT` with
 `application/octet-stream` to a `POST` built from a `FormData`. That request is
 simple in the extension too, so no platform branch is needed.
 
+## The metadata methods
+
+`PCloudSrc` funnels every method through one `request()`, and it calls eight:
+`listfolder`, `createfolder`, `renamefolder`, `deletefolder`, `renamefile`,
+`deletefile`, `getfilelink` and `uploadfile`. The last two are the ones being
+replaced, and they are also the only two that do not return a JSON envelope —
+one hands out a content host, the other's `Content-Type` decides whether it is
+preflighted. The other six are plain JSON GETs, so they were expected to work,
+but that is what was said about writing, so the write test now exercises them
+too.
+
+It does so in a nested folder with a throwaway file of its own, so the file the
+round trip verified stays untouched and the cleanup still has something to
+remove. `deletefolder` is called after `deletefile` because, unlike
+`deletefolderrecursive`, it refuses a folder with contents — which is why Podium
+uses it: it cannot destroy anything unexpectedly.
+
+## Digest reuse
+
+`PCloudDirectAuth` signs every request with a fresh digest, so every operation
+costs two round trips. `getdigest` returns an expiry 30 seconds out:
+
+```json
+{ "result": 0, "expires": "Fri, 16 Oct 2026 16:24:20 +0000", "digest": "..." }
+```
+
+That implies a digest may be reused until then, but nothing had tested that
+pCloud accepts the same digest twice. The **Test digest reuse** button runs the
+same three `listfolder` calls both ways and reports the measured window, so the
+implementation can cache the digest with a margin rather than guess.
+
 Requests pass the token as a query parameter rather than an `Authorization`
 header. `api.pcloud.com` omits `Access-Control-Allow-Headers` from its preflight
 response, so a request carrying `Authorization` is rejected from a web origin.
