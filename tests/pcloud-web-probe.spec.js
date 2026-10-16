@@ -323,15 +323,16 @@ test("the probe writes a file back and verifies the round trip byte for byte", a
     /the round trip is byte-exact: \d+ bytes written and read back/,
   ]);
 
+  // The cleanup runs after everything else, so wait for it before looking at
+  // what the whole run did. The folder was created here, so it is removed whole.
+  await expect(page.locator("#diagnostics li").last())
+    .toHaveText(/Deleted \/podium-write-probe and everything this test put in it\./);
+
   // The second POST is the metadata test's throwaway file in the subfolder.
   expect(uploads.map(upload => upload.method)).toEqual(["PUT", "POST", "POST"]);
   expect(uploads[0].contentType).toBe("application/octet-stream");
   expect(uploads[1].contentType).toMatch(/^multipart\/form-data; boundary=/);
   expect(uploads[2].contentType).toMatch(/^multipart\/form-data; boundary=/);
-  // The folder was created by this run, so it is removed whole. Cleanup runs
-  // after the last pass, so wait for it rather than for the verdict.
-  await expect(page.locator("#diagnostics li").last())
-    .toHaveText(/Deleted \/podium-write-probe and everything this test put in it\./);
   // The metadata test removes its own file and folder before the cleanup runs,
   // and deletefolder must come after deletefile or the real one would refuse.
   expect(deletes).toEqual(["deletefile", "deletefolder", "deletefolderrecursive"]);
