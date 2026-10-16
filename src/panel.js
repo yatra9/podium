@@ -1105,9 +1105,8 @@ class OpenPanel extends FilePanel {
     super(cell);
     this.mode = "open";
     // Filter out WWW - it's a source type but not a file browser tab
-    const isExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
     const fileSources = Object.entries(Score.sources)
-      .filter(([key]) => key !== "url" && (key !== "pcloud" || isExtension))
+      .filter(([key]) => key !== "url")
       .map(([, value]) => value);
     this.tabView = new TabView(this, "Recent", ...fileSources);
     this.body.append(this.tabView.elm);
@@ -1163,9 +1162,8 @@ class SavePanel extends FilePanel {
     super(cell);
     this.mode = "save";
     // Filter out WWW (url source)
-    const isExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
     const fileSources = Object.entries(Score.sources)
-      .filter(([key]) => key !== "url" && (key !== "pcloud" || isExtension))
+      .filter(([key]) => key !== "url")
       .map(([, value]) => value);
     this.tabView = new TabView(this, ...fileSources);
     this.body.append(this.tabView.elm);
