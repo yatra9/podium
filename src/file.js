@@ -248,6 +248,7 @@ class FileSrc {
       else if (ref == Score.sources.gdrive) src = new GDriveSrc();
       else if (ref == Score.sources.dbx) src = new DbxSrc();
       else if (ref == Score.sources.odrive) src = new ODriveSrc();
+      else if (ref == Score.sources.pcloud) src = new PCloudSrc();
       else if (ref == Score.sources.url) src = new UrlSrc();
       FileSrc.refs.set(ref, src); // ref -> src
       FileSrc.refs.set(src, ref); // src -> ref
@@ -1685,6 +1686,351 @@ class ODriveSrc extends CachedSrc {
   }
 }
 
+const PCLOUD_CLIENT_ID = "W569fmzwKBQ";
+const PCLOUD_API_HOSTS = new Set(["api.pcloud.com", "eapi.pcloud.com"]);
+
+function stylePCloudDialog(elm) {
+  // Generic Podium dialogs intentionally scale with the score UI and can
+  // become very large on desktop. Match the Open/Save panel instead.
+  elm.style.fontSize = "clamp(14px, 2vmin, 20px)";
+  elm.style.width = "min(28em, calc(100vw - 3em))";
+  elm.style.maxHeight = "calc(100vh - 3em)";
+  elm.style.overflowX = "hidden";
+}
+
+/**
+ * OAuth token-flow authentication for the pCloud Chrome extension.
+ * The provider boundary matches PCloudDirectAuth so file operations do not
+ * depend on the authentication mechanism.
+ */
+class PCloudOAuthAuth {
+  apiHost = null;
+  accessToken = null;
+  sessionRestored = false;
+
+  async restoreSession() {
+    if (this.sessionRestored) return;
+    this.sessionRestored = true;
+    let saved = (await chrome.storage.session.get("pcloud-oauth"))["pcloud-oauth"];
+    if (saved?.accessToken && PCLOUD_API_HOSTS.has(saved.apiHost)) {
+      this.accessToken = saved.accessToken;
+      this.apiHost = saved.apiHost;
+    }
+  }
+
+  async authenticate() {
+    if (!(window.chrome && chrome.runtime?.id && chrome.identity?.launchWebAuthFlow))
+      throw new Error("pCloud OAuth is available only in the Podium browser extension.");
+    await this.restoreSession();
+    if (this.accessToken && this.apiHost) return;
+
+    let redirectUri = chrome.identity.getRedirectURL();
+    let state = getPlainChallenge();
+    let authorizeUrl = new URL("https://my.pcloud.com/oauth2/authorize");
+    authorizeUrl.searchParams.set("client_id", PCLOUD_CLIENT_ID);
+    authorizeUrl.searchParams.set("response_type", "token");
+    authorizeUrl.searchParams.set("redirect_uri", redirectUri);
+    authorizeUrl.searchParams.set("state", state);
+
+    let responseUrl = await chrome.identity.launchWebAuthFlow({
+      url: authorizeUrl.href,
+      interactive: true,
+    });
+    if (!responseUrl || !responseUrl.startsWith(redirectUri))
+      throw new Error("pCloud OAuth returned an invalid redirect URI.");
+    let response = new URL(responseUrl);
+    let params = new URLSearchParams(response.hash.slice(1));
+    if (params.get("state") !== state)
+      throw new Error("pCloud OAuth state validation failed.");
+    let accessToken = params.get("access_token");
+    let apiHost = params.get("hostname");
+    if (!accessToken || !PCLOUD_API_HOSTS.has(apiHost))
+      throw new Error(params.get("error_description") || params.get("error") ||
+        "pCloud OAuth returned no access token or API host.");
+
+    this.accessToken = accessToken;
+    this.apiHost = apiHost;
+    await chrome.storage.session.set({
+      "pcloud-oauth": { accessToken, apiHost },
+    });
+  }
+
+  async requestAuth() {
+    await this.authenticate();
+    return {
+      apiHost: this.apiHost,
+      params: {},
+      headers: { Authorization: `Bearer ${this.accessToken}` },
+    };
+  }
+
+  async forget() {
+    this.apiHost = this.accessToken = null;
+    await chrome.storage.session.remove("pcloud-oauth");
+  }
+}
+
+/**
+ * Direct pCloud authentication retained as a personal fallback.
+ *
+ * The provider boundary is intentionally separate from PCloudSrc so it can be
+ * replaced by an OAuth implementation without changing file operations.
+ * The email address is remembered locally. At the user's option the password
+ * is kept in chrome.storage.session, which is memory-only and cleared when
+ * Chrome exits. pCloud currently authenticates direct requests but does not
+ * issue reusable auth tokens, so every request receives a fresh digest.
+ */
+class PCloudDirectAuth {
+  apiHost = localStorage.getItem("pcloud-api-host") || "api.pcloud.com";
+  email = null;
+  password = null;
+  sessionRestored = false;
+
+  async sha1Hex(value) {
+    let bytes = typeof value == "string" ? new TextEncoder().encode(value) : value;
+    let digest = new Uint8Array(await crypto.subtle.digest("SHA-1", bytes));
+    return Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
+  }
+
+  async authenticate() {
+    if (!(window.chrome && chrome.runtime?.id))
+      throw new Error("pCloud is available only in the Podium browser extension.");
+    if (!this.sessionRestored) {
+      this.sessionRestored = true;
+      this.email = localStorage.getItem("pcloud-email") || null;
+      let saved = await chrome.storage.session.get("pcloud-password");
+      this.password = saved["pcloud-password"] || null;
+    }
+    if (this.email && this.password) return;
+
+    return new Promise((resolve, reject) => {
+      let elm = dialog(
+        `Connect to pCloud<br><br>
+         <select data-tag="region" class="dialog__textInput">
+           <option value="api.pcloud.com">United States</option>
+           <option value="eapi.pcloud.com">Europe</option>
+         </select><br><br>
+         <input is="pod-input" type="email" autocomplete="username" class="dialog__textInput" data-tag="email" placeholder="pCloud email"><br><br>
+         <input is="pod-input" type="password" autocomplete="current-password" class="dialog__textInput" data-tag="password" placeholder="pCloud password"><br><br>
+         <label><input type="checkbox" data-tag="remember" checked>
+           Remember password until Chrome exits</label><br><br>
+         <small>The email address is remembered on this device. The password is kept in memory only.</small>`,
+        { Connect: { svg: "pCloud" }, Cancel: { svg: "Cancel" } },
+        async (_event, _prop, tag, args) => {
+          if (tag == "Cancel") {
+            args.close();
+            return reject(new Error("pCloud login cancelled.", { cause: "cancelled" }));
+          }
+          let inputs = dataIndex("tag", args.elm);
+          let email = inputs.email.value.trim().toLowerCase();
+          let password = inputs.password.value;
+          let apiHost = inputs.region.value;
+          if (!email || !password || !PCLOUD_API_HOSTS.has(apiHost)) return;
+          inputs.password.value = "";
+          this.email = email;
+          this.password = password;
+          this.apiHost = apiHost;
+          localStorage.setItem("pcloud-api-host", apiHost);
+          localStorage.setItem("pcloud-email", email);
+          if (inputs.remember.checked)
+            await chrome.storage.session.set({ "pcloud-password": password });
+          else
+            await chrome.storage.session.remove("pcloud-password");
+          args.close();
+          resolve();
+        }
+      );
+      stylePCloudDialog(elm);
+      let inputs = dataIndex("tag", elm);
+      inputs.region.value = this.apiHost;
+      inputs.email.value = this.email || "";
+      elm.addEventListener("cancel", () => reject(new Error("pCloud login cancelled.", { cause: "cancelled" })), { once: true });
+      setTimeout(() => dataIndex("tag", elm).email.focus(), 50);
+    });
+  }
+
+  async requestAuth() {
+    await this.authenticate();
+    let response = await fetch(`https://${this.apiHost}/getdigest`, { referrerPolicy: "no-referrer" });
+    let payload = await response.json();
+    if (!response.ok || payload.result !== 0 || !payload.digest)
+      throw new Error(`pCloud getdigest failed: ${payload.error || response.status}`);
+    let usernameHash = await this.sha1Hex(this.email);
+    let material = new TextEncoder().encode(this.password + usernameHash + payload.digest);
+    return {
+      apiHost: this.apiHost,
+      params: {
+        username: this.email,
+        digest: payload.digest,
+        passworddigest: await this.sha1Hex(material),
+      },
+      headers: {},
+    };
+  }
+
+  async forget() {
+    this.email = this.password = null;
+    localStorage.removeItem("pcloud-email");
+    await chrome.storage.session.remove("pcloud-password");
+  }
+}
+
+/** Select OAuth by default while keeping Direct Login available explicitly. */
+class PCloudAuth {
+  oauth = new PCloudOAuthAuth();
+  direct = new PCloudDirectAuth();
+  active = null;
+
+  async authenticate() {
+    if (this.active) return this.active.authenticate();
+    await this.oauth.restoreSession();
+    if (this.oauth.accessToken) {
+      this.active = this.oauth;
+      return;
+    }
+
+    return new Promise((resolve, reject) => {
+      let elm = dialog(
+        `Connect to pCloud<br><br>
+         <small>OAuth is recommended. Podium will not receive your pCloud password.</small>`,
+        {
+          "Sign in with pCloud": { svg: "pCloud" },
+          "Direct login": { svg: "pCloud" },
+          Cancel: { svg: "Cancel" },
+        },
+        async (_event, _prop, tag, args) => {
+          if (tag == "Cancel") {
+            args.close();
+            return reject(new Error("pCloud login cancelled.", { cause: "cancelled" }));
+          }
+          args.close();
+          this.active = tag == "Direct login" ? this.direct : this.oauth;
+          try {
+            await this.active.authenticate();
+            resolve();
+          } catch (error) {
+            this.active = null;
+            reject(error);
+          }
+        }
+      );
+      stylePCloudDialog(elm);
+      elm.addEventListener("cancel", () =>
+        reject(new Error("pCloud login cancelled.", { cause: "cancelled" })), { once: true });
+    });
+  }
+
+  async requestAuth() {
+    await this.authenticate();
+    return this.active.requestAuth();
+  }
+
+  async forget() {
+    this.active = null;
+    await Promise.all([this.oauth.forget(), this.direct.forget()]);
+  }
+}
+
+class PCloudSrc extends CachedSrc {
+  source = Score.sources.pcloud;
+
+  constructor(authProvider = new PCloudAuth()) {
+    super();
+    this.authProvider = authProvider;
+    this.cache[""].id = 0;
+  }
+
+  async auth() {
+    await this.authProvider.authenticate();
+  }
+
+  async request(method, params = {}, options = {}) {
+    let auth = await this.authProvider.requestAuth();
+    let url = new URL(`https://${auth.apiHost}/${method}`);
+    for (let [name, value] of Object.entries({ ...params, ...auth.params }))
+      url.searchParams.set(name, String(value));
+    let response = await fetch(url, {
+      method: options.method || "GET",
+      headers: { ...auth.headers, ...(options.headers || {}) },
+      body: options.body,
+      referrerPolicy: "no-referrer",
+    });
+    let payload;
+    try { payload = await response.json(); }
+    catch (_error) { throw new Error(`pCloud ${method} returned HTTP ${response.status}.`); }
+    if (!response.ok || payload.result !== 0)
+      throw new Error(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
+    return payload;
+  }
+
+  putCache(path, data) {
+    super.putCache(path, data);
+    for (let obj of data) {
+      if (obj.isfolder) {
+        let subPath = path + "/" + obj.name;
+        this.cache[subPath] = {
+          isDir: true, name: obj.name, id: obj.folderid,
+          created: Date.parse(obj.created), modified: Date.parse(obj.modified),
+          ts: 0, dirs: {}, files: {},
+        };
+        this.cache[path].dirs[obj.name] = this.cache[subPath];
+      } else {
+        this.cache[path].files[obj.name] = {
+          isDir: false, name: obj.name, id: obj.fileid,
+          created: Date.parse(obj.created), modified: Date.parse(obj.modified), size: obj.size,
+        };
+      }
+    }
+    return this.cache[path];
+  }
+
+  async getDirSrc(_path, dir) {
+    return (await this.request("listfolder", { folderid: dir.id })).metadata.contents || [];
+  }
+
+  async putDirSrc(_path, name, srcDir) {
+    await this.request("createfolder", { folderid: srcDir.id, name });
+    srcDir.ts = 0;
+  }
+
+  async renameDirSrc(_path, _name, newName, srcDir, srcSubDir) {
+    await this.request("renamefolder", { folderid: srcSubDir.id, toname: newName });
+    srcDir.ts = 0;
+  }
+
+  async trashDirSrc(_path, _name, parentDir, dir) {
+    await this.request("deletefolder", { folderid: dir.id });
+    parentDir.ts = 0;
+  }
+
+  async getFileSrc(_path, _name, _dir, file) {
+    let link = await this.request("getfilelink", { fileid: file.id, contenttype: "application/pdf" });
+    if (!link.hosts?.length || !link.path) throw new Error("pCloud returned no download location.");
+    let response = await fetch(`https://${link.hosts[0]}${link.path}`, { referrerPolicy: "no-referrer" });
+    if (!response.ok) throw new Error(`pCloud download failed with HTTP ${response.status}.`);
+    return await response.arrayBuffer();
+  }
+
+  async putFileSrc(_path, name, data, dir, _file) {
+    await this.request("uploadfile", { folderid: dir.id, filename: name, nopartial: 1 }, {
+      method: "PUT",
+      headers: { "Content-Type": "application/octet-stream" },
+      body: data,
+    });
+    dir.ts = 0;
+  }
+
+  async renameFileSrc(_path, _name, newName, srcDir, srcFile) {
+    await this.request("renamefile", { fileid: srcFile.id, toname: newName });
+    srcDir.ts = 0;
+  }
+
+  async trashFileSrc(_path, _name, dir, file) {
+    await this.request("deletefile", { fileid: file.id });
+    dir.ts = 0;
+  }
+}
+
 /**
 class UrlSrc (i.e. WWW/URL - extension only)
   Handles opening PDFs from URLs. Only available when running as extension.
@@ -2745,4 +3091,5 @@ class FileSystemView extends FileListView {
     });
   }
 }
-window._FileSrc_ = FileSrc; window._CachedSrc_ = CachedSrc;
+window._FileSrc_ = FileSrc; window._CachedSrc_ = CachedSrc; window._PCloudSrc_ = PCloudSrc;
+window._PCloudOAuthAuth_ = PCloudOAuthAuth;
