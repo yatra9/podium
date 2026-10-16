@@ -99,15 +99,20 @@ async function directBytes(apiHost, email, password, method, params = {}) {
   return responseBytes(await fetch(url), method);
 }
 
+/**
+ * Signs one digest. getdigest returns an expiry, so a digest is reusable within
+ * its window; the reuse test measures what that is worth, because signing every
+ * request separately makes each operation two round trips.
+ */
+async function digestCredentials(email, password, digest) {
+  const usernameHash = await sha1Hex(email);
+  const material = new TextEncoder().encode(password + usernameHash + digest);
+  return { username: email, digest, passworddigest: await sha1Hex(material) };
+}
+
 async function directCredentials(apiHost, email, password) {
   const digestPayload = await responseJson(await fetch(`https://${apiHost}/getdigest`), "getdigest");
-  const usernameHash = await sha1Hex(email);
-  const material = new TextEncoder().encode(password + usernameHash + digestPayload.digest);
-  return {
-    username: email,
-    digest: digestPayload.digest,
-    passworddigest: await sha1Hex(material),
-  };
+  return digestCredentials(email, password, digestPayload.digest);
 }
 
 /**
@@ -483,6 +488,66 @@ async function cleanUpWriteProbe(apiHost, email, password, folder, fileIds) {
 }
 
 /**
+ * Exercises the metadata methods Podium calls that no probe had reached yet.
+ *
+ * PCloudSrc funnels every method through one request(), and the only methods
+ * that have ever behaved differently from a web origin are the two that do not
+ * return a JSON envelope: getfilelink, which hands out a content host, and
+ * uploadfile, whose Content-Type decides whether it is preflighted. These five
+ * are plain JSON GETs like the proven listfolder, so they are expected to pass —
+ * but "expected to pass" is what was said about writing.
+ *
+ * Runs inside the write test's own folder, in a nested folder with a throwaway
+ * file of its own, so the file the round trip verified stays untouched and the
+ * cleanup still has something to remove.
+ */
+async function testMetadataMethods(apiHost, email, password, folder, fileIds) {
+  const call = (method, params, options) => directJson(apiHost, email, password, method, params, options);
+
+  diagnostic("Calling createfolder (not createfolderifnotexists)...");
+  const nested = await call("createfolder", { folderid: String(folder.id), name: "nested" });
+  if (nested.metadata?.folderid === undefined) throw new Error("createfolder returned no folder id.");
+  const nestedId = nested.metadata.folderid;
+
+  const form = new FormData();
+  form.append("file", new Blob([makeWriteProbeBytes(1 << 10)], { type: "application/pdf" }), "nested-probe.pdf");
+  const uploaded = await call("uploadfile", { folderid: String(nestedId), nopartial: 1 },
+    { method: "POST", body: form });
+  const nestedFileId = uploaded.metadata?.[0]?.fileid;
+  if (nestedFileId === undefined) throw new Error("uploadfile returned no file id for the nested file.");
+  fileIds.push(nestedFileId);
+
+  // listfolder was only ever proven on the root folder.
+  diagnostic(`Calling listfolder on folderid ${nestedId} rather than the root...`);
+  const contents = (await call("listfolder", { folderid: String(nestedId) })).metadata?.contents || [];
+  if (!contents.some(entry => !entry.isfolder && entry.fileid === nestedFileId))
+    throw new Error("listfolder on the subfolder did not show the file just uploaded into it.");
+
+  diagnostic("Calling renamefolder and renamefile...");
+  await call("renamefolder", { folderid: String(nestedId), toname: "nested-renamed" });
+  await call("renamefile", { fileid: String(nestedFileId), toname: "renamed-probe.pdf" });
+
+  const parent = (await call("listfolder", { folderid: String(folder.id) })).metadata?.contents || [];
+  const renamedFolder = parent.find(entry => entry.isfolder && entry.folderid === nestedId);
+  if (renamedFolder?.name !== "nested-renamed")
+    throw new Error(`renamefolder left the name as "${renamedFolder?.name}".`);
+  const renamedFile = ((await call("listfolder", { folderid: String(nestedId) })).metadata?.contents || [])
+    .find(entry => entry.fileid === nestedFileId);
+  if (renamedFile?.name !== "renamed-probe.pdf")
+    throw new Error(`renamefile left the name as "${renamedFile?.name}".`);
+
+  // deletefolder, unlike deletefolderrecursive, refuses a folder with contents,
+  // which is why Podium uses it: it cannot destroy anything unexpectedly.
+  diagnostic("Calling deletefile and deletefolder...");
+  await call("deletefile", { fileid: String(nestedFileId) });
+  fileIds.splice(fileIds.indexOf(nestedFileId), 1);
+  await call("deletefolder", { folderid: String(nestedId) });
+
+  pass("all five untested metadata methods work with per-request digest authentication: " +
+    "createfolder, listfolder on a subfolder, renamefolder, renamefile, deletefile and deletefolder.");
+}
+
+/**
  * Answers whether a web origin can write a file back to pCloud.
  *
  * Reading was the question that forced pCloud support into the extension, but
@@ -566,10 +631,76 @@ async function testWrite(button) {
     if (entry.bytes.some((byte, index) => byte !== payload[index]))
       throw new Error("The round trip returned the right number of bytes, but they differ.");
     pass(`the round trip is byte-exact: ${payload.length} bytes written and read back (method ${entry.method}).`);
+
+    // Separate so that a metadata failure cannot be mistaken for a write failure.
+    try {
+      await testMetadataMethods(apiHost, email, password, folder, fileIds);
+    } catch (error) {
+      diagnostic(`METADATA FAIL: ${error.message}`, "failure");
+    }
   } catch (error) {
     diagnostic(`WRITE FAIL: ${error.message}`, "failure");
   } finally {
     await cleanUpWriteProbe(apiHost, email, password, folder, fileIds);
+    button.disabled = false;
+  }
+}
+
+/**
+ * Measures what reusing one digest is worth.
+ *
+ * PCloudDirectAuth signs every request with a fresh digest, so every operation
+ * costs two round trips. getdigest returns an expiry, which implies a digest may
+ * be reused until then, but nothing had tested that pCloud actually accepts the
+ * same digest twice. This runs the same listfolder calls both ways and reports
+ * the expiry window, so the implementation can cache the digest with a margin
+ * rather than guess.
+ */
+async function testDigestReuse(button) {
+  button.disabled = true;
+  const apiHost = elements.region.value;
+  const email = elements.email.value.trim().toLowerCase();
+  const password = elements.password.value;
+  const calls = 3;
+  try {
+    if (!allowedApiHosts.has(apiHost)) throw new Error("Select a valid pCloud region.");
+    if (!email || !password)
+      throw new Error("Re-enter the email and password: the password is never kept between tests.");
+    elements.password.value = "";
+
+    const requested = Date.now();
+    const digestPayload = await responseJson(await fetch(`https://${apiHost}/getdigest`), "getdigest");
+    const expires = Date.parse(digestPayload.expires);
+    if (!Number.isFinite(expires)) throw new Error(`getdigest returned an unreadable expiry: ${digestPayload.expires}`);
+    const window = (expires - requested) / 1000;
+    diagnostic(`getdigest issued a digest valid for ${window.toFixed(1)} s (expires ${digestPayload.expires}).`);
+
+    const credentials = await digestCredentials(email, password, digestPayload.digest);
+    const listUrl = () => {
+      const url = new URL(`https://${apiHost}/listfolder`);
+      url.searchParams.set("folderid", "0");
+      return url;
+    };
+
+    const reusedStart = performance.now();
+    for (let call = 0; call < calls; call++) {
+      const url = listUrl();
+      for (const [name, value] of Object.entries(credentials)) url.searchParams.set(name, value);
+      await responseJson(await fetch(url), `listfolder (reused digest, call ${call + 1})`);
+    }
+    const reused = performance.now() - reusedStart;
+
+    const freshStart = performance.now();
+    for (let call = 0; call < calls; call++)
+      await directJson(apiHost, email, password, "listfolder", { folderid: "0" });
+    const fresh = performance.now() - freshStart;
+
+    pass(`one digest served ${calls} listfolder calls in ${reused.toFixed(0)} ms, ` +
+      `against ${fresh.toFixed(0)} ms for ${calls} calls each signed with its own digest ` +
+      `(${(fresh / reused).toFixed(2)}x). The digest window is ${window.toFixed(1)} s.`);
+  } catch (error) {
+    diagnostic(`DIGEST REUSE FAIL: ${error.message}`, "failure");
+  } finally {
     button.disabled = false;
   }
 }
@@ -612,6 +743,7 @@ elements.useAccessToken.addEventListener("click", () => {
 });
 
 elements.testWrite.addEventListener("click", () => testWrite(elements.testWrite));
+elements.testDigestReuse.addEventListener("click", () => testDigestReuse(elements.testDigestReuse));
 
 elements.listRoot.addEventListener("click", async () => {
   elements.listRoot.disabled = true;
