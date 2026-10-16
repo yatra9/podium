@@ -150,6 +150,10 @@ remove. `deletefolder` is called after `deletefile` because, unlike
 `deletefolderrecursive`, it refuses a folder with contents — which is why Podium
 uses it: it cannot destroy anything unexpectedly.
 
+All six pass from the deployed origin. The renames are not believed on their
+success envelope alone: the probe lists the folder again and checks that the
+names actually changed.
+
 ## Digest reuse
 
 `PCloudDirectAuth` signs every request with a fresh digest, so every operation
@@ -163,6 +167,15 @@ That implies a digest may be reused until then, but nothing had tested that
 pCloud accepts the same digest twice. The **Test digest reuse** button runs the
 same three `listfolder` calls both ways and reports the measured window, so the
 implementation can cache the digest with a margin rather than guess.
+
+It is reusable. From the deployed origin, one digest served three `listfolder`
+calls in 652 ms against 1310 ms for three calls each signed separately — 2.01x,
+which is exactly the second round trip. The window measured 29.4 s.
+
+So the digest should be cached. 29.4 s is the whole window as seen by the
+client, including the latency of fetching it, so the implementation must
+re-sign well before that: the expiry is what the server returns, not a promise
+about the client's clock.
 
 Requests pass the token as a query parameter rather than an `Authorization`
 header. `api.pcloud.com` omits `Access-Control-Allow-Headers` from its preflight

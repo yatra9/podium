@@ -543,8 +543,9 @@ async function testMetadataMethods(apiHost, email, password, folder, fileIds) {
   fileIds.splice(fileIds.indexOf(nestedFileId), 1);
   await call("deletefolder", { folderid: String(nestedId) });
 
-  pass("all five untested metadata methods work with per-request digest authentication: " +
-    "createfolder, listfolder on a subfolder, renamefolder, renamefile, deletefile and deletefolder.");
+  pass("all five untested metadata methods work with per-request digest authentication " +
+    "(createfolder, renamefolder, renamefile, deletefile and deletefolder), " +
+    "as does listfolder on a subfolder rather than the root.");
 }
 
 /**
