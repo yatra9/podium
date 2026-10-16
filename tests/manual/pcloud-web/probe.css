@@ -10,6 +10,7 @@ dl { display: grid; grid-template-columns: 10rem 1fr; gap: .5rem; }
 dt { font-weight: 700; }
 dd { margin: 0; overflow-wrap: anywhere; }
 section { border-top: 1px solid #8886; margin-top: 2rem; padding-top: 1rem; }
-.file { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .5rem 0; }
+.file { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding: .5rem 0; flex-wrap: wrap; }
+.file span { flex: 1; min-width: 14rem; }
 .success { color: #188038; }
 .failure { color: #c5221f; }

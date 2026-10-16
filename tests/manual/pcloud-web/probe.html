@@ -29,6 +29,22 @@
         <button id="listRoot" type="button" disabled>2. List root folder</button>
       </div>
 
+      <div class="row">
+        <input id="accessToken" type="password" autocomplete="off" placeholder="pCloud OAuth access token (alternative to direct login)">
+        <button id="useAccessToken" type="button">1b. Use access token</button>
+      </div>
+      <p>Direct login no longer yields a reusable token on every account. The descriptor test needs one, so paste an OAuth access token instead: open the extension build's Podium tab, sign in to pCloud, and read <code>pcloud-oauth</code> from <code>chrome.storage.session</code> in that tab's console. The token stays in memory here and the input is cleared on use.</p>
+
+      <section>
+        <h2>What the download tests prove</h2>
+        <p>The question each test answers is whether a web origin can read the bytes of a pCloud file at all. Only <code>api.pcloud.com</code> sends <code>Access-Control-Allow-Origin: *</code>; the content hosts it hands out do not.</p>
+        <ul>
+          <li><strong>getfilelink download</strong> fetches the file from a content host. Expected to fail from a web origin. This is why pCloud support is currently confined to the browser extension, where <code>host_permissions</code> bypass CORS.</li>
+          <li><strong>file_pread download</strong> would read bytes from <code>api.pcloud.com</code> through the descriptor API. Expected to fail: <code>file_open</code> answers <code>2003 Access denied</code> even with no credentials at all, so the descriptor API is closed to API clients.</li>
+          <li><strong>getzip download</strong> asks <code>api.pcloud.com</code> for a single-member archive and extracts it in the browser. This is the remaining candidate. If it passes from a deployed origin, a plain web app or PWA can read pCloud files with no extension.</li>
+        </ul>
+      </section>
+
       <section>
         <h2>Root PDFs</h2>
         <div id="files"></div>
