@@ -107,6 +107,7 @@ is run with `emcc` available and the extension is rebuilt/reloaded.
 |---------|-------------|
 | `python3 build.py` | Full build (font, sample, yin, podium, guide) |
 | `python3 build.py --podium` | Build single-file app (`build/podium.html`) |
+| `python3 build.py --pages` | Build a static-host deployment (`build/pages/`) |
 | `python3 build.py --guide` | Build Guidebook keyword index |
 | `python3 build.py --font` | Build font assets (embeds Bravura.otf as base64) |
 | `python3 build.py --sample` | Build piano samples (requires ffmpeg) |
@@ -115,6 +116,27 @@ is run with `emcc` available and the extension is rebuilt/reloaded.
 | `python3 build.py --clean` | Clean build artifacts |
 
 The build system creates a single-file distribution at `build/podium.html` that includes all dependencies, assets, and source code inline.
+
+#### Static-host deployment
+
+`--pages` writes `build/pages/`: the packaged page as `index.html`, plus
+`manifest.webmanifest`, `sw.js`, `podauth.html` and the two PWA icons. Upload
+the directory anywhere static — GitHub Pages, for instance — and Podium
+installs as a PWA from it. Everything is referenced relatively, so it works from
+any subdirectory and the directory may be renamed.
+
+The one exception is OAuth. Each provider's console must list `podauth.html`'s
+exact URL as a redirect URI, so moving the directory means re-registering it
+there, and a deployment under a different origin needs its own client IDs.
+Google Drive is unaffected: its web path uses the GIS token client, which is
+authorised by JavaScript origin rather than by redirect URI. pCloud is
+unaffected too, because outside the extension it uses password login, which
+registers nothing.
+
+The icons need cairosvg, ImageMagick, or node with Playwright — whichever is
+present. Note that `convert` on Windows is Windows' own FAT-to-NTFS converter,
+not ImageMagick, and the cairosvg wheel installs there without the cairo library
+it needs; the Playwright fallback exists for that case.
 
 ## License
 
