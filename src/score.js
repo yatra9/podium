@@ -1045,6 +1045,7 @@ class Score {
     gdrive: "Drive",
     dbx: "Dropbox",
     odrive: "OneDrive",
+    pcloud: "pCloud",
     url: "WWW",
   });
 

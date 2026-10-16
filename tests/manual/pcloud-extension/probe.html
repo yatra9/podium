@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Podium pCloud capability probe</title>
+    <link rel="stylesheet" href="probe.css">
+  </head>
+  <body>
+    <main>
+      <h1>Podium pCloud capability probe</h1>
+      <p>This extension only tests whether Chrome can read a private pCloud PDF. Access tokens remain in memory and are never displayed or stored.</p>
+
+      <label for="clientId">pCloud Client ID</label>
+      <div class="row">
+        <input id="clientId" type="text" autocomplete="off" spellcheck="false">
+        <button id="saveClientId" type="button">Save Client ID</button>
+      </div>
+
+      <dl>
+        <dt>Extension ID</dt><dd><code id="extensionId"></code></dd>
+        <dt>OAuth redirect URI</dt><dd><code id="redirectUri"></code></dd>
+        <dt>OAuth token storage</dt><dd>Memory only</dd>
+      </dl>
+
+      <section>
+        <h2>Temporary direct-login test</h2>
+        <p>This bypasses OAuth only for the capability test. The password is never stored; it remains in function memory only while the test runs and the input is cleared after the first digest.</p>
+        <div class="row">
+          <select id="region" aria-label="pCloud data region">
+            <option value="api.pcloud.com">United States</option>
+            <option value="eapi.pcloud.com">Europe</option>
+          </select>
+          <input id="email" type="email" autocomplete="username" placeholder="pCloud email">
+          <input id="password" type="password" autocomplete="current-password" placeholder="pCloud password">
+          <button id="directLogin" type="button">Direct login (test only)</button>
+        </div>
+      </section>
+
+      <div class="actions">
+        <button id="authorize" type="button">1. Authorize pCloud</button>
+        <button id="listRoot" type="button" disabled>2. List root folder</button>
+      </div>
+
+      <section>
+        <h2>Root PDFs</h2>
+        <p>Select a PDF to test <code>getfilelink</code> and download it as an <code>ArrayBuffer</code>.</p>
+        <div id="files"></div>
+      </section>
+
+      <section>
+        <h2>Diagnostics</h2>
+        <ol id="diagnostics"></ol>
+      </section>
+    </main>
+    <script src="probe.js"></script>
+  </body>
+</html>

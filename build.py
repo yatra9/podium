@@ -8,19 +8,21 @@ from io import StringIO
 from io import BytesIO
 import os
 import pdb
+import re
 import socket
 import sys
 import subprocess
 
 
 if len(sys.argv) == 1:
-   args = argparse.Namespace(verbose=True, font=True, sample=True, podium=True, yin=True, guide=True, cert=False, clean=False, cert_host='') ;
+   args = argparse.Namespace(verbose=True, font=True, sample=True, podium=True, yin=True, extension=False, guide=True, cert=False, clean=False, cert_host='') ;
 else:
   parser = argparse.ArgumentParser()
   parser.add_argument('-s','--sample', action='store_true', help='(re)build build/sample.js')
   parser.add_argument('-f','--font', action='store_true', help='(re)build build/font.js')
   parser.add_argument('-p','--podium', action='store_true', help='(re)build build/podium.html')
   parser.add_argument('-y','--yin', action='store_true', help='(re)build build/yin.js')
+  parser.add_argument('-e','--extension', action='store_true', help='(re)build the personal Chrome extension')
   parser.add_argument('-g','--guide', action='store_true', help='(re)build guidebook keyword index')
   parser.add_argument('--certificate', '--cert', action='store_true', dest='cert', help='(re)build certificate')
   parser.add_argument('--cert-host', dest='cert_host', default='', help='comma-separated extra SAN hosts (IPs and/or names) to add to the dev certificate')
@@ -44,7 +46,7 @@ if args.clean:
     if args.verbose: print('Clean complete.')
     sys.exit(0)
 
-os.system('mkdir build 2> /dev/null') ;
+os.makedirs('build', exist_ok=True)
 
 def build_yin(args):
     print("Building YIN worklet...")
@@ -227,7 +229,13 @@ if args.sample:
         except OSError:
             pass
         if args.verbose: print(f"Converting {ifname} to {ofname}")
-        os.system('ffmpeg -i ' + ifname  + ' -acodec libmp3lame -t 2.25s -ac 2 -b:a 128k -ar 22050 ' + ofname + '> /dev/null 2>&1')
+        subprocess.run(
+            ['ffmpeg', '-y', '-i', ifname, '-acodec', 'libmp3lame', '-t', '2.25s',
+             '-ac', '2', '-b:a', '128k', '-ar', '22050', ofname],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=True,
+        )
 
     #  package mp3 files in javascript module:
     outFileName = 'build/sample.js'
@@ -304,7 +312,7 @@ class Packager(object):
                 includedFilePath = line.split()[2] ;
                 if args.verbose: print("including ", includedFilePath) ;
                 outFileObj.write(line.replace("#include","#inclusion", 1)) ;
-                with open(includedFilePath) as includedFileObj:
+                with open(includedFilePath, encoding='utf-8') as includedFileObj:
                     if "minified" in line:
                         Packager(includedFilePath, includedFileObj, outFileObj)
                     elif "deflateAs" in line:
@@ -413,8 +421,8 @@ class Packager(object):
 
 # Helper function to build using Packager (used by both --podium and --ext builds)
 def build(inFileName, outFileName):
-    with open(inFileName) as inFileObj:
-        with open(outFileName,"w") as outFileObj:
+    with open(inFileName, encoding='utf-8') as inFileObj:
+        with open(outFileName, "w", encoding='utf-8', newline='\n') as outFileObj:
             Packager(inFileName, inFileObj, outFileObj)
 
 if args.yin:
@@ -464,9 +472,9 @@ PODIUM_PAGE_PATCHES = [
 ]
 
 def build_podium_page(outFileName):
-    with open("src/pod.html") as f:
+    with open("src/pod.html", encoding='utf-8') as f:
         page = f.read()
-    with open("LICENSE") as f:
+    with open("LICENSE", encoding='utf-8') as f:
         license = f.read()
     for old, new in PODIUM_PAGE_PATCHES:
         if page.count(old) != 1:
@@ -476,10 +484,72 @@ def build_podium_page(outFileName):
     # the Packager reads its input as javascript, and would strip, say, the
     # rest of any line of html text containing "//".
     head, tail = page.split(PODIUM_PAGE_INCLUDE)
-    with open(outFileName, "w") as outFileObj:
+    with open(outFileName, "w", encoding='utf-8', newline='\n') as outFileObj:
         outFileObj.write(head)
         Packager("src/pod.html", StringIO(PODIUM_PAGE_INCLUDE), outFileObj)
         outFileObj.write(tail)
+
+if args.extension:
+    # A packaged Podium page always references this worklet. Keep extension
+    # development possible without Emscripten; a real --yin build replaces it.
+    yin_worklet = os.path.join('build', 'yin-worklet.js')
+    if not os.path.exists(yin_worklet):
+        shutil.copyfile(os.path.join('src', 'yin-worklet-fallback.js'), yin_worklet)
+        print('  NOTE: using fallback YIN worklet; pitch detection is unavailable.')
+    # The extension page starts from the very same packaged page as the 1-file
+    # build, so the two cannot drift apart (see build_podium_page above).
+    build_podium_page("build/podium.html")
+    extension_dir = os.path.join('build', 'extension')
+    extension_app_dir = os.path.join(extension_dir, 'build')
+    # Everything under extension_dir is generated below, so start from nothing:
+    # the page's scripts are numbered, and a build that emits fewer of them than
+    # the last one would otherwise leave stale scripts behind to be packaged.
+    # Clearing the contents is what matters; on Windows the directory itself
+    # may survive while a handle to it is open, which is harmless here.
+    shutil.rmtree(extension_dir, ignore_errors=True)
+    os.makedirs(extension_app_dir, exist_ok=True)
+    shutil.copyfile('manifest.json', os.path.join(extension_dir, 'manifest.json'))
+    shutil.copyfile('extension-background.js', os.path.join(extension_dir, 'extension-background.js'))
+    for pdf_module in ('pdf.min.mjs', 'pdf.worker.min.mjs'):
+        with open(os.path.join('lib', pdf_module), encoding='utf-8') as source_file:
+            pdf_source = source_file.read()
+        # Avoid even attempting eval-based PDF.js optimizations under MV3 CSP.
+        pdf_source = pdf_source.replace('try{new Function("");return!0}catch{return!1}', 'return!1')
+        with open(os.path.join(extension_app_dir, pdf_module), 'w', encoding='utf-8', newline='\n') as target_file:
+            target_file.write(pdf_source)
+    # Manifest V3 forbids inline JavaScript. Extract every packaged script to
+    # a local file while retaining attributes such as type="module".
+    with open(os.path.join('build', 'podium.html'), encoding='utf-8') as packaged:
+        extension_html = packaged.read()
+    script_index = [0]
+    def extract_extension_script(match):
+        script_source = match.group(2)
+        if 'navigator.serviceWorker.register' in script_source:
+            return ''
+        # fontkit's legacy global-object fallback uses Function("return this"),
+        # which Manifest V3 forbids. Modern Chrome always provides globalThis.
+        script_source = script_source.replace('Function("return this")()', 'globalThis')
+        if 'type="module"' in match.group(1):
+            script_source = (
+                'import * as extensionPdfjsLib from "./pdf.min.mjs";\n'
+                'window.pdfjsLib = extensionPdfjsLib;\n'
+                'window.pdfjsLib.GlobalWorkerOptions.workerPort = '
+                'new Worker("./pdf.worker.min.mjs", { type: "module" });\n' +
+                script_source
+            )
+        script_index[0] += 1
+        filename = f'podium-script-{script_index[0]}.js'
+        with open(os.path.join(extension_app_dir, filename), 'w', encoding='utf-8', newline='\n') as script_file:
+            script_file.write(script_source)
+        return f'<script{match.group(1)} src="{filename}"></script>'
+    extension_html = re.sub(r'<script([^>]*)>(.*?)</script>', extract_extension_script,
+                            extension_html, flags=re.DOTALL | re.IGNORECASE)
+    # These PWA-only resources are deliberately absent from the extension.
+    extension_html = re.sub(r'\s*<link rel="manifest"[^>]*>', '', extension_html)
+    extension_html = re.sub(r'\s*<link rel="apple-touch-icon"[^>]*>', '', extension_html)
+    with open(os.path.join(extension_app_dir, 'podium.html'), 'w', encoding='utf-8', newline='\n') as extension_page:
+        extension_page.write(extension_html)
+    if args.verbose: print('-- personal extension podium.html (re)built.')
 
 if args.podium:
     # Build 1-file, all-included version of podium as "build/podium.html":
