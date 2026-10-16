@@ -2,6 +2,16 @@ const allowedApiHosts = new Set(["api.pcloud.com", "eapi.pcloud.com"]);
 // Descriptor reads are chunked because file_pread caps the bytes it returns per
 // request. A short chunk is normal and is not an error.
 const readChunkBytes = 1 << 20;
+// The write test works in its own folder so that cleaning up can never touch
+// anything else, and its payload is random so that comparing the round trip
+// proves the bytes survived rather than that two headers happen to match.
+// A few tens of kilobytes answer the CORS question but measure nothing: the
+// whole request is round-trip latency. Saving an annotated score uploads
+// megabytes, so the size is selectable and the deployed-origin run should use a
+// realistic one.
+const writeProbeFolder = "podium-write-probe";
+const writeProbeFile = "podium-write-probe.pdf";
+const writeProbeMaxKiB = 64 << 10;
 // tokenParam is "auth" for a direct-login token and "access_token" for OAuth.
 const state = { authToken: null, tokenParam: "auth", apiHost: null };
 const elements = Object.fromEntries(
@@ -100,11 +110,18 @@ async function directCredentials(apiHost, email, password) {
   };
 }
 
-async function directJson(apiHost, email, password, method, params = {}) {
+/**
+ * The per-request digest equivalent of pcloudJson. Options are passed through so
+ * the write tests can choose the method and body, which is the whole point of
+ * those tests: the upload's Content-Type decides whether the request is
+ * preflighted, and api.pcloud.com answers OPTIONS without an
+ * Access-Control-Allow-Headers field.
+ */
+async function directJson(apiHost, email, password, method, params = {}, options = {}) {
   const credentials = await directCredentials(apiHost, email, password);
   const url = new URL(`https://${apiHost}/${method}`);
   for (const [name, value] of Object.entries({ ...params, ...credentials })) url.searchParams.set(name, value);
-  return responseJson(await fetch(url), method);
+  return responseJson(await fetch(url, options), method);
 }
 
 async function runTokenlessCapabilityTest(apiHost, email, password) {
@@ -425,6 +442,138 @@ async function testZipRead(file, button) {
   }
 }
 
+/** A PDF whose body is random, so a round trip can be compared exactly. */
+function makeWriteProbeBytes(bodyBytes) {
+  const header = new TextEncoder().encode("%PDF-1.4\n% Podium pCloud write probe\n");
+  const trailer = new TextEncoder().encode("\n%%EOF\n");
+  const body = new Uint8Array(bodyBytes);
+  // getRandomValues refuses more than 65536 bytes at a time.
+  for (let offset = 0; offset < body.length; offset += 1 << 14)
+    crypto.getRandomValues(body.subarray(offset, Math.min(offset + (1 << 14), body.length)));
+  const bytes = new Uint8Array(header.length + body.length + trailer.length);
+  bytes.set(header, 0);
+  bytes.set(body, header.length);
+  bytes.set(trailer, header.length + body.length);
+  return bytes;
+}
+
+/**
+ * Removes whatever the write test created. The folder is deleted recursively
+ * only when this run created it: if it already existed, it is the user's folder
+ * and only the files this run uploaded may be removed.
+ */
+async function cleanUpWriteProbe(apiHost, email, password, folder, fileIds) {
+  if (folder?.created) {
+    try {
+      await directJson(apiHost, email, password, "deletefolderrecursive", { folderid: String(folder.id) });
+      diagnostic(`Deleted /${writeProbeFolder} and everything this test put in it.`);
+      return;
+    } catch (error) {
+      diagnostic(`Could not delete /${writeProbeFolder}: ${error.message}. Remove it by hand.`, "failure");
+    }
+  }
+  for (const fileId of fileIds) {
+    try {
+      await directJson(apiHost, email, password, "deletefile", { fileid: String(fileId) });
+      diagnostic(`Deleted the probe file (fileid ${fileId}).`);
+    } catch (error) {
+      diagnostic(`Could not delete fileid ${fileId}: ${error.message}. Remove it by hand.`, "failure");
+    }
+  }
+}
+
+/**
+ * Answers whether a web origin can write a file back to pCloud.
+ *
+ * Reading was the question that forced pCloud support into the extension, but
+ * writing was never actually tested from a web origin, and Podium's current
+ * upload cannot work there: PCloudSrc.putFileSrc sends PUT with
+ * "Content-Type: application/octet-stream", which is not a CORS-safelisted
+ * value, so the request is preflighted. api.pcloud.com answers OPTIONS with
+ * Access-Control-Allow-Origin and Access-Control-Allow-Methods but no
+ * Access-Control-Allow-Headers, so the Content-Type is never allowed.
+ *
+ * multipart/form-data is one of the three safelisted Content-Type values, so a
+ * POST built from a FormData is a simple request and is never preflighted. This
+ * test runs both so the comparison is recorded rather than assumed, then reads
+ * the file back with getzip and compares every byte. Writing result 0 means
+ * nothing to a score annotator if the annotations do not survive the trip.
+ */
+async function testWrite(button) {
+  button.disabled = true;
+  const apiHost = elements.region.value;
+  const email = elements.email.value.trim().toLowerCase();
+  const password = elements.password.value;
+  let folder = null;
+  const fileIds = [];
+  try {
+    if (!allowedApiHosts.has(apiHost)) throw new Error("Select a valid pCloud region.");
+    if (!email || !password)
+      throw new Error("Re-enter the email and password: the password is never kept between tests.");
+    const sizeKiB = Number(elements.writeSize.value);
+    if (!Number.isInteger(sizeKiB) || sizeKiB < 1 || sizeKiB > writeProbeMaxKiB)
+      throw new Error(`Enter a probe size between 1 and ${writeProbeMaxKiB} KiB.`);
+    elements.password.value = "";
+
+    const payload = makeWriteProbeBytes(sizeKiB << 10);
+    diagnostic(`Creating /${writeProbeFolder} for a ${payload.length}-byte probe file...`);
+    const created = await directJson(apiHost, email, password, "createfolderifnotexists",
+      { folderid: "0", name: writeProbeFolder });
+    if (created.metadata?.folderid === undefined)
+      throw new Error("createfolderifnotexists returned no folder id.");
+    folder = { id: created.metadata.folderid, created: Boolean(created.created) };
+    diagnostic(
+      folder.created
+        ? `Created /${writeProbeFolder} (folderid ${folder.id}); it will be deleted at the end.`
+        : `/${writeProbeFolder} already existed (folderid ${folder.id}); only the files this test uploads will be deleted.`,
+      "success"
+    );
+
+    // Podium's current upload path, expected to fail from a web origin.
+    try {
+      diagnostic("Uploading with PUT and Content-Type: application/octet-stream (Podium's current code)...");
+      const put = await directJson(apiHost, email, password, "uploadfile",
+        { folderid: String(folder.id), filename: `put-${writeProbeFile}`, nopartial: 1 },
+        { method: "PUT", headers: { "Content-Type": "application/octet-stream" }, body: payload });
+      for (const entry of put.metadata || []) fileIds.push(entry.fileid);
+      diagnostic("The preflighted PUT upload succeeded, so Podium's current code needs no change.", "success");
+    } catch (error) {
+      diagnostic(`PREFLIGHTED PUT UPLOAD FAIL: ${error.message}`, "failure");
+    }
+
+    // The candidate that needs no preflight.
+    const form = new FormData();
+    form.append("file", new Blob([payload], { type: "application/pdf" }), writeProbeFile);
+    diagnostic("Uploading with POST and multipart/form-data, which needs no preflight...");
+    const started = performance.now();
+    const uploaded = await directJson(apiHost, email, password, "uploadfile",
+      { folderid: String(folder.id), nopartial: 1 }, { method: "POST", body: form });
+    const elapsed = performance.now() - started;
+    const stored = uploaded.metadata?.[0];
+    if (stored?.fileid === undefined) throw new Error("uploadfile returned no file id.");
+    fileIds.push(stored.fileid);
+    if (Number(stored.size) !== payload.length)
+      throw new Error(`uploadfile stored ${stored.size} bytes instead of ${payload.length}.`);
+    const rate = (payload.length / 1024 / (elapsed / 1000)).toFixed(0);
+    pass(`multipart uploadfile stored ${payload.length} bytes as fileid ${stored.fileid} ` +
+      `in ${elapsed.toFixed(0)} ms (${rate} KiB/s).`);
+
+    diagnostic("Reading the file back with getzip to compare the bytes...");
+    const archive = await directBytes(apiHost, email, password, "getzip", { fileids: String(stored.fileid) });
+    const entry = await extractPdfFromZip(archive);
+    if (entry.bytes.length !== payload.length)
+      throw new Error(`The round trip returned ${entry.bytes.length} bytes instead of ${payload.length}.`);
+    if (entry.bytes.some((byte, index) => byte !== payload[index]))
+      throw new Error("The round trip returned the right number of bytes, but they differ.");
+    pass(`the round trip is byte-exact: ${payload.length} bytes written and read back (method ${entry.method}).`);
+  } catch (error) {
+    diagnostic(`WRITE FAIL: ${error.message}`, "failure");
+  } finally {
+    await cleanUpWriteProbe(apiHost, email, password, folder, fileIds);
+    button.disabled = false;
+  }
+}
+
 function useAccessToken() {
   const apiHost = elements.region.value;
   const token = elements.accessToken.value.trim();
@@ -461,6 +610,8 @@ elements.useAccessToken.addEventListener("click", () => {
     diagnostic(`Access token rejected: ${error.message}`, "failure");
   }
 });
+
+elements.testWrite.addEventListener("click", () => testWrite(elements.testWrite));
 
 elements.listRoot.addEventListener("click", async () => {
   elements.listRoot.disabled = true;

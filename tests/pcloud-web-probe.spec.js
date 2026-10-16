@@ -198,6 +198,147 @@ test("the probe reports a getzip JSON error envelope as a failure", async ({ pag
   ]);
 });
 
+/**
+ * Returns the single uploaded file's bytes from a multipart/form-data body.
+ * Playwright hands back the raw body, and the probe must be shown to have sent
+ * the bytes unaltered, so the part is parsed rather than trusted.
+ */
+function readSinglePart(body, contentType) {
+  const boundary = /boundary=(.+)$/.exec(contentType)?.[1];
+  expect(boundary).toBeTruthy();
+  const start = body.indexOf("\r\n\r\n") + 4;
+  const end = body.lastIndexOf(`\r\n--${boundary}--`);
+  return body.subarray(start, end);
+}
+
+/** Serves the folder, upload, read-back and delete methods of the write test. */
+async function mockWriteApi(page, { folderCreated = true, uploads, deletes } = {}) {
+  let storedBytes = null;
+  await page.route("https://api.pcloud.com/getdigest**", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ result: 0, digest: "mock-digest", expires: "never" }),
+  }));
+  await page.route("https://api.pcloud.com/createfolderifnotexists**", route => route.fulfill({
+    contentType: "application/json",
+    body: JSON.stringify({ result: 0, created: folderCreated, metadata: { folderid: 4242 } }),
+  }));
+  await page.route("https://api.pcloud.com/uploadfile**", route => {
+    const request = route.request();
+    const contentType = request.headers()["content-type"] || "";
+    uploads?.push({ method: request.method(), contentType });
+    // Stand in for the preflight api.pcloud.com never allows.
+    if (request.method() !== "POST" || !contentType.startsWith("multipart/form-data"))
+      return route.abort("failed");
+    storedBytes = readSinglePart(request.postDataBuffer(), contentType);
+    route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({
+        result: 0,
+        metadata: [{ fileid: 777, name: "podium-write-probe.pdf", size: storedBytes.length }],
+      }),
+    });
+  });
+  await page.route("https://api.pcloud.com/getzip**", route => route.fulfill({
+    contentType: "application/zip",
+    body: buildZip("podium-write-probe.pdf", storedBytes),
+  }));
+  for (const method of ["deletefolderrecursive", "deletefile"])
+    await page.route(`https://api.pcloud.com/${method}**`, route => {
+      deletes?.push(method);
+      route.fulfill({ contentType: "application/json", body: JSON.stringify({ result: 0 }) });
+    });
+}
+
+/** Fills the credentials the write test re-reads from the form on every run. */
+async function startWriteTest(page) {
+  await page.goto("/pcloud-web/probe.html");
+  await page.fill("#email", "probe@example.test");
+  await page.fill("#password", "mock-password");
+  await page.click("#testWrite");
+}
+
+test("the probe writes a file back and verifies the round trip byte for byte", async ({ page }) => {
+  const errors = [];
+  const uploads = [];
+  const deletes = [];
+  page.on("pageerror", error => errors.push(error.message));
+
+  await mockWriteApi(page, { uploads, deletes });
+  await startWriteTest(page);
+
+  // The preflighted PUT must be reported and must not stop the multipart test.
+  await expect(page.locator("#diagnostics li.failure"))
+    .toHaveText([/PREFLIGHTED PUT UPLOAD FAIL:/]);
+  await expect(page.locator("#diagnostics li.success")).toContainText([
+    /Created \/podium-write-probe/,
+    /multipart uploadfile stored \d+ bytes as fileid 777/,
+    /the round trip is byte-exact: \d+ bytes written and read back/,
+  ]);
+
+  expect(uploads.map(upload => upload.method)).toEqual(["PUT", "POST"]);
+  expect(uploads[0].contentType).toBe("application/octet-stream");
+  expect(uploads[1].contentType).toMatch(/^multipart\/form-data; boundary=/);
+  // The folder was created by this run, so it is removed whole. Cleanup runs
+  // after the last pass, so wait for it rather than for the verdict.
+  await expect(page.locator("#diagnostics li").last())
+    .toHaveText(/Deleted \/podium-write-probe and everything this test put in it\./);
+  expect(deletes).toEqual(["deletefolderrecursive"]);
+  // The password must not survive the test in the form.
+  expect(await page.inputValue("#password")).toBe("");
+  expect(errors).toEqual([]);
+});
+
+test("the probe leaves a pre-existing folder in place and deletes only its own file", async ({ page }) => {
+  const deletes = [];
+  await mockWriteApi(page, { folderCreated: false, deletes });
+  await startWriteTest(page);
+
+  await expect(page.locator("#diagnostics li.success"))
+    .toContainText([/\/podium-write-probe already existed/]);
+  await expect(page.locator("#diagnostics li")).toContainText([/Deleted the probe file \(fileid 777\)/]);
+  expect(deletes).toEqual(["deletefile"]);
+});
+
+test("the probe rejects an out-of-range probe size before calling pCloud", async ({ page }) => {
+  const calls = [];
+  await mockWriteApi(page);
+  page.on("request", request => {
+    if (request.url().startsWith("https://api.pcloud.com/")) calls.push(request.url());
+  });
+
+  await page.goto("/pcloud-web/probe.html");
+  await page.fill("#email", "probe@example.test");
+  await page.fill("#password", "mock-password");
+  await page.fill("#writeSize", "0");
+  await page.click("#testWrite");
+
+  await expect(page.locator("#diagnostics li.failure"))
+    .toHaveText([/WRITE FAIL: Enter a probe size between 1 and 65536 KiB\./]);
+  expect(calls).toEqual([]);
+  // A rejected size must not consume the password either.
+  expect(await page.inputValue("#password")).toBe("mock-password");
+});
+
+test("the probe reports a corrupted round trip as a failure", async ({ page }) => {
+  await mockWriteApi(page);
+  // Answer the read-back with a file of the right length but the wrong bytes.
+  await page.route("https://api.pcloud.com/getzip**", route => route.fulfill({
+    contentType: "application/zip",
+    body: buildZip("podium-write-probe.pdf", Buffer.concat([
+      Buffer.from("%PDF-1.4\n% Podium pCloud write probe\n"),
+      Buffer.alloc(32 << 10),
+      Buffer.from("\n%%EOF\n"),
+    ])),
+  }));
+
+  await startWriteTest(page);
+
+  await expect(page.locator("#diagnostics li.failure")).toContainText([
+    /PREFLIGHTED PUT UPLOAD FAIL:/,
+    /WRITE FAIL: The round trip returned the right number of bytes, but they differ\./,
+  ]);
+});
+
 test("the probe reports a content host without CORS as a failure", async ({ page }) => {
   await mockDescriptorApi(page);
   await page.route("https://api.pcloud.com/getfilelink**", route => route.fulfill({

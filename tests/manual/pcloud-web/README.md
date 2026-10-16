@@ -76,8 +76,46 @@ that path passes from a deployed origin, a plain web app or PWA can read pCloud
 files without an extension, and the Android tablet needs no Chrome extension
 support.
 
-Writing is not in question: `uploadfile` is served by `api.pcloud.com` and takes
-`multipart/form-data`, a CORS-safelisted content type.
+## Writing
+
+Writing was declared not in question too early. `uploadfile` is served by
+`api.pcloud.com`, but Podium's `PCloudSrc.putFileSrc` sends `PUT` with
+`Content-Type: application/octet-stream`, which is not a CORS-safelisted value,
+so the request is preflighted. `api.pcloud.com` answers `OPTIONS` like this, for
+any `Access-Control-Request-Headers`:
+
+```text
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Methods: GET, POST, PUT, OPTIONS
+Access-Control-Max-Age: 86400
+```
+
+No `Access-Control-Allow-Headers`, so the `Content-Type` is never allowed and the
+current upload cannot work from a web origin. The extension does not notice:
+`host_permissions` bypass CORS.
+
+`multipart/form-data` is one of the three safelisted `Content-Type` values, so a
+`POST` built from a `FormData` is a simple request and is never preflighted. The
+**Test write** button runs both uploads so the comparison is recorded rather
+than assumed, then reads the file back with `getzip` and compares every byte: a
+write that returns `result 0` is worthless to a score annotator if the
+annotations do not survive the trip.
+
+The test works in `/podium-write-probe`, uploads one file of random bytes, and
+deletes what it created. The folder is deleted recursively only when the run
+created it; if it already existed it is the user's folder and only that run's
+uploads are removed.
+
+The probe size is selectable because the default 32 KiB answers the CORS
+question but measures nothing: the whole request is round-trip latency. Saving
+an annotated score uploads megabytes, so the deployed-origin run should also use
+a realistic size.
+
+From localhost the preflighted `PUT` fails with `Failed to fetch`, as predicted,
+and the `multipart/form-data` `POST` stores 32812 bytes and reads back byte for
+byte. A deployed-origin run is still required: `getfilelink` already proved that
+pCloud applies referer checks that localhost does not see, and `uploadfile` may
+do the same.
 
 Requests pass the token as a query parameter rather than an `Authorization`
 header. `api.pcloud.com` omits `Access-Control-Allow-Headers` from its preflight
