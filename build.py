@@ -501,6 +501,12 @@ if args.extension:
     build_podium_page("build/podium.html")
     extension_dir = os.path.join('build', 'extension')
     extension_app_dir = os.path.join(extension_dir, 'build')
+    # Everything under extension_dir is generated below, so start from nothing:
+    # the page's scripts are numbered, and a build that emits fewer of them than
+    # the last one would otherwise leave stale scripts behind to be packaged.
+    # Clearing the contents is what matters; on Windows the directory itself
+    # may survive while a handle to it is open, which is harmless here.
+    shutil.rmtree(extension_dir, ignore_errors=True)
     os.makedirs(extension_app_dir, exist_ok=True)
     shutil.copyfile('manifest.json', os.path.join(extension_dir, 'manifest.json'))
     shutil.copyfile('extension-background.js', os.path.join(extension_dir, 'extension-background.js'))
