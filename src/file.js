@@ -566,7 +566,12 @@ class CachedSrc extends FileSrc {
     authUrl = null; // subclass defined
     tokenUrl = null; // subclass defined
 
-    redirectUri = `${location.origin}/podauth.html`;
+    // Resolved against the page, not the origin, so Podium works when it is
+    // served from a subdirectory. Each provider's console must list this exact
+    // URI, so moving the directory means re-registering it. Google Drive is the
+    // exception: its web path uses the GIS token client, which is authorised by
+    // JavaScript origin and so is unaffected by the path.
+    redirectUri = new URL("podauth.html", location.href).href;
     tokens = null;
     refreshExpiry = 90 * 24 * 60 * 60; // default refresh token expiry in seconds
     authTimeout = 180; // max time in seconds for user to complete authorization
