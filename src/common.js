@@ -2236,6 +2236,10 @@ let fontMap = {
     fontStyle: "italic",
     fontWeight: "bold",
   },
+  // The only bundled font with Japanese glyphs. score.js also falls back to it
+  // when the chosen font cannot show the text, since the standard fonts are
+  // WinAnsi-encoded and fail on anything outside that repertoire.
+  "Noto Sans JP": { fontFamily: "Noto Sans JP", fontStyle: "normal", fontWeight: "normal" },
   Bravura: { fontFamily: "Bravura", fontStyle: "normal", fontWeight: "normal" },
   Vercetti: { fontFamily: "Vercetti", fontStyle: "normal", fontWeight: "normal" },
   "Patrick Hand": { fontFamily: "Patrick Hand", fontStyle: "normal", fontWeight: "normal" },
