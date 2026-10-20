@@ -1,7 +1,7 @@
 // Podium Service Worker
 // Enables offline functionality and PWA installation
 
-const CACHE_NAME = 'podium-v2.3.0-e202c8a79440';
+const CACHE_NAME = 'podium-v2.3.0-f71e4d2089f8';
 // Relative to this script, so Podium works when served from a subdirectory.
 // The packaged page is podium.html where Podium is deployed alongside the rest
 // of the site, and index.html where the deployment is Podium alone, so try both
@@ -17,7 +17,7 @@ const urlsToCache = [
 // every image, they are already preload="none" in the guidebook, and the fetch
 // handler below leaves media to the network entirely.
 const docToCache = [
-  './Guidebook.html',
+  './Guidebook.ja.html',
   './assets/appabout.webp',
   './assets/appcells.webp',
   './assets/appcurtain.webp',
