@@ -690,7 +690,24 @@ class Layout {
     return false;
   }
 
-  cancelNav() {}
+  navGen = 0;   // bumped by cancelNav; see the guard in each onDown
+
+  cancelNav() {
+    // A second finger has arrived, so the one-finger page navigation this
+    // layout began is off. Subclasses override to undo whatever they had
+    // started to move, and call this to drop the listeners -- the pointerup
+    // above all. A pinch ends with two fingers lifting, and the second lift is
+    // not a tap on the score: left listening, it reads that lift as a tap and
+    // turns a page out from under the pinch. (Pinching low on a page and
+    // lifting would advance it, and a two-finger double-tap would both refit
+    // the layout and move it on, which is how this was found.)
+    // @return whether there was a navigation to cancel.
+    this.navGen++;
+    let navigating = !!this.navMv;
+    unlisten(this.navMv, this.navUp);
+    this.navMv = this.navUp = null;
+    return navigating;
+  }
 
   async pgOpen(how) {
     // Subclasses override with logic to open page, where @how is one
@@ -1101,6 +1118,7 @@ class BookLayout extends Layout {
   }
 
   async onDown(e) {
+    let gen = this.navGen;
     if (this.inOp && this.closeFunc) {
       // This block runs when a pointer event is received while a sequence of
       // pgFlip's animator calls is still running running from previous page flip,
@@ -1124,6 +1142,11 @@ class BookLayout extends Layout {
     }
 
     if (await this.whileAlive(super.onDown(e))) return;
+    // A second finger may have arrived while the awaits above were settling, in
+    // which case this navigation was cancelled before it had registered
+    // anything to cancel -- and registering it now would leave a pinch with a
+    // live page-turn listener. (cancelNav bumps the generation.)
+    if (gen != this.navGen) return;
 
     // if empty slot or pager, ignore
     if (e.target.dataset.slot) return; // empty slot
@@ -1185,9 +1208,7 @@ class BookLayout extends Layout {
   }
 
   cancelNav() {
-    if (!this.navMv) return;
-    unlisten(this.navMv);
-    this.navMv = null;
+    if (!super.cancelNav()) return;
     let { pgWidth, pgHeight } = this.cell.geo;
     let toX = this.navAdvancing ? pgWidth : -pgWidth;
     this.closeFunc = () => this.layoutSlots();
@@ -1870,11 +1891,17 @@ class ScrollLayout extends Layout {
   }
 
   async onDown(e) {
+    let gen = this.navGen;
     if (this.inOp) {
       this.commitAnimId++;
       this.inOp = false;
     }
     if (await this.whileAlive(super.onDown(e))) return;
+    // A second finger may have arrived while the awaits above were settling, in
+    // which case this navigation was cancelled before it had registered
+    // anything to cancel -- and registering it now would leave a pinch with a
+    // live page-turn listener. (cancelNav bumps the generation.)
+    if (gen != this.navGen) return;
     let { LEFT, CLIENTX, WIDTH, X, VX } = this.props;
     let sashLimit = this.cell.geo.sashLimit;
     this.sash.setPointerCapture(e.pointerId);
@@ -1902,10 +1929,11 @@ class ScrollLayout extends Layout {
       }).bind(this)
     );
 
-    listen(
+    this.navUp = listen(
       this.frame,
       "pointerup",
       (async (eup) => {
+        this.navUp = null;
         unlisten(this.navMv);
         this.navMv = null;
         drag.up(eup) ;
@@ -1928,9 +1956,7 @@ class ScrollLayout extends Layout {
   }
 
   cancelNav() {
-    if (!this.navMv) return;
-    unlisten(this.navMv);
-    this.navMv = null;
+    if (!super.cancelNav()) return;
     this.pgSnapTo(0);
   }
 
@@ -2539,8 +2565,14 @@ class TableLayout extends Layout {
 
 
   async onDown(e) {
+    let gen = this.navGen;
     // The pasting guard (set during an in-flight cut/copy) is checked in super.onDown().
     if (await this.whileAlive(super.onDown(e))) return;
+    // A second finger may have arrived while the awaits above were settling, in
+    // which case this navigation was cancelled before it had registered
+    // anything to cancel -- and registering it now would leave a pinch with a
+    // live page-turn listener. (cancelNav bumps the generation.)
+    if (gen != this.navGen) return;
     this.layout.setPointerCapture(e.pointerId);
     let elm = e.target.closest(".TableLayout__pg");
     if(!elm) return;
@@ -2569,7 +2601,8 @@ e.taken = true ;
     this.navMv = null;
     let built = false;
 
-    listen(this.layout, "pointerup", async (eup) => {
+    this.navUp = listen(this.layout, "pointerup", async (eup) => {
+      this.navUp = null;
       this.bMarkTimer.cancel();
       let finale = () => {
         if(!built) delay(1, () => finale());
@@ -2608,9 +2641,7 @@ e.taken = true ;
 
   cancelNav() {
     this.bMarkTimer.cancel();
-    if (!this.navMv) return;
-    unlisten(this.navMv);
-    this.navMv = null;
+    super.cancelNav();
   }
 
   async pgGoTo(pn) {

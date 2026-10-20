@@ -236,6 +236,51 @@ test("every layout snaps back to the state it was built in", async ({ page }) =>
   }
 });
 
+test("two fingers on a real score never turn a page", async ({ page }) => {
+  // The bug this guards: a pinch ends with two fingers lifting, and the layout
+  // read the second lift as a tap on the score. Pinching low on a page and
+  // letting go would advance it, and a two-finger double-tap would refit the
+  // layout AND move it on, so the reset landed on the wrong page. The fingers
+  // are deliberately staggered, because landing them in the same instant hid
+  // it: the nav listeners are registered after an await, so a second finger
+  // arriving before that could cancel a navigation that had not registered yet
+  // and then let it register anyway.
+  test.setTimeout(120_000);
+  await page.evaluate(() => { window._menu_.rings.score.cells.new.stash.pgCount = 8; });
+  await page.evaluate(() => window._menu_.notify("score/new/up"));
+  await expect.poll(() => page.evaluate(() => !!window._score_), { timeout: 30_000 }).toBe(true);
+
+  const cdp = await page.context().newCDPSession(page);
+  const tap = async (points, stagger) => {
+    const touches = points.map((p, i) => ({ ...p, id: i + 1 }));
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [touches[0]] });
+    if (stagger) await page.waitForTimeout(stagger);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: touches });
+    await page.waitForTimeout(20);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [touches[1]] });
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+
+  for (const key of ["book", "horizontal", "vertical", "table"]) {
+    await page.evaluate(async (key) => {
+      const Layout = window._Layout_;
+      await Layout.open(window._menu_.rings.layout.cells[key]);
+      await Layout.activeLayout.pgGoTo(3);
+    }, key);
+    await page.waitForTimeout(GS * 3);
+    const before = await page.evaluate(() => _score_.numbers.pn);
+
+    // Low on the page, which is the half that advances.
+    const low = [{ x: 500, y: 620 }, { x: 640, y: 620 }];
+    for (const stagger of [0, 40, 120]) {
+      await tap(low, stagger);
+      await page.waitForTimeout(GS * 2);
+      expect(await page.evaluate(() => _score_.numbers.pn), `${key} stagger ${stagger}`).toBe(before);
+    }
+  }
+  await cdp.detach();
+});
+
 test("re-tapping the layout already on screen refits instead of reopening", async ({ page }) => {
   // Reopening would save the pan-zoom in the destructor and restore it in the
   // rebuild, so the tap would cost a "Formatting" shade and change nothing.
