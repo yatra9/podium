@@ -71,6 +71,19 @@ test("the static-host build references everything relatively", async () => {
   expect(fs.existsSync(path.join(pagesDir, "podauth.html"))).toBe(true);
 });
 
+test("the static-host build stamps itself so a device can be checked", async ({ page }) => {
+  // "Which build is this device running?" is the question every PWA update
+  // raises, because the service worker may still be answering from its cache.
+  await page.goto("/pages/index.html");
+  const build = await page.evaluate(() => window._podiumBuild_);
+  expect(build).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/);
+
+  // Served from src/ the sources are unstamped, and must say so rather than
+  // claiming a build they are not.
+  await page.goto("/pod.html");
+  expect(await page.evaluate(() => window._podiumBuild_)).toBe("dev");
+});
+
 test("the service worker's cache name follows the page it serves", async () => {
   // A deployment whose sw.js is byte-identical to the last one goes unnoticed:
   // the browser sees no new worker, never reinstalls, and keeps answering from
