@@ -1907,7 +1907,6 @@ class ScrollLayout extends Layout {
     this.sash.setPointerCapture(e.pointerId);
     let frameBox = getBox(this.frame);
     let drag = new Drag(e, { minvelocity: 0.01 });
-    let prevSashStart = this.sashStart ; // Used by pgAlert logic(...)
 
     this.navMv = listen(
       this.frame,
@@ -1918,8 +1917,13 @@ class ScrollLayout extends Layout {
         // sash locations where no Pg is mounted
         if (clientX < frameBox[X] || clientX > frameBox[X] + frameBox[WIDTH]) return;
         // follow the user's move:
+        let prevSash = this.sashStart ;
         this.sashStart = clamp(this.sashStart + clientX - drag.mvBuf.at(-1)[CLIENTX], sashLimit, 0); // drag.mvBuf.at(-1) is previous mv event
-        if(this.sashStart == prevSashStart) // no motion means were at the start or end
+        // No motion means we're at the start or the end -- but only say so once the
+        // finger has really travelled, and only against where the sash was a moment
+        // ago. A tap wanders a pixel or two before it lifts, the clamp swallows that
+        // too, and the alert then fired on a plain tap meant to turn the page.
+        if(this.sashStart == prevSash && drag.moved) // no motion means were at the start or end
         { Layout.pgAlert(drag.mvBuf.at(-1)[CLIENTX] < clientX ? "start" : "end");
           e.taken = true ;
         }
