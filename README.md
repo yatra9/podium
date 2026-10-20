@@ -107,6 +107,7 @@ is run with `emcc` available and the extension is rebuilt/reloaded.
 |---------|-------------|
 | `python3 build.py` | Full build (font, sample, yin, podium, guide) |
 | `python3 build.py --podium` | Build single-file app (`build/podium.html`) |
+| `python3 build.py --doc` | Recompress the guidebook's media for deployment (`build/doc-assets/`, requires ffmpeg) |
 | `python3 build.py --pages` | Build a static-host deployment (`build/pages/`) |
 | `python3 build.py --guide` | Build Guidebook keyword index |
 | `python3 build.py --font` | Build font assets (embeds Bravura.otf as base64) |
@@ -124,6 +125,27 @@ The build system creates a single-file distribution at `build/podium.html` that 
 the directory anywhere static — GitHub Pages, for instance — and Podium
 installs as a PWA from it. Everything is referenced relatively, so it works from
 any subdirectory and the directory may be renamed.
+
+It also carries the guidebook, where `--doc` has been run first. The web app
+publishes the guidebook beside the page, so `App → Guide` can reach it with a
+relative URL; a deployment that does not carry it borrows the published copy
+from studiop5.org instead, which the panel decides by probing for a local one.
+The prose is deployed exactly as published, studiop5.org references included.
+
+`--doc` derives `build/doc-assets/` from `doc/assets/`, which is 42 MB of
+capture-resolution screenshots and screen recordings: images become WebP at
+1280px wide (13.5 MB → 2.5 MB) and clips become AV1 at 1280px wide (28.7 MB →
+11.5 MB). The service worker precaches the guidebook and its images, so it reads
+offline; the videos are fetched when played, which is also why `sw.js` leaves
+media requests to the browser rather than intercepting them — media arrives as
+Range requests, and the Cache API cannot store the 206 responses that answer
+them. Encoding all 78 files takes minutes, so each output records the digest of
+its input and of the recipe that made it, and is rebuilt only when one changes.
+
+`mise exec -- ffmpeg` cannot be used for this: the mise ffmpeg is a conda-style
+package whose bin directory shadows the C runtime for every process started
+after it is put on PATH — including mise itself. `build_doc.py` locates the real
+executable and runs it directly.
 
 The one exception is OAuth. Each provider's console must list `podauth.html`'s
 exact URL as a redirect URI, so moving the directory means re-registering it

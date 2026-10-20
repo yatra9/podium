@@ -17,7 +17,7 @@ import subprocess
 
 
 if len(sys.argv) == 1:
-   args = argparse.Namespace(verbose=True, font=True, sample=True, podium=True, yin=True, extension=False, pages=False, guide=True, cert=False, clean=False, cert_host='') ;
+   args = argparse.Namespace(verbose=True, font=True, sample=True, podium=True, yin=True, extension=False, doc=False, pages=False, guide=True, cert=False, clean=False, cert_host='') ;
 else:
   parser = argparse.ArgumentParser()
   parser.add_argument('-s','--sample', action='store_true', help='(re)build build/sample.js')
@@ -25,6 +25,7 @@ else:
   parser.add_argument('-p','--podium', action='store_true', help='(re)build build/podium.html')
   parser.add_argument('-y','--yin', action='store_true', help='(re)build build/yin.js')
   parser.add_argument('-e','--extension', action='store_true', help='(re)build the personal Chrome extension')
+  parser.add_argument('--doc', action='store_true', help='(re)build build/doc-assets/, the guidebook media recompressed for deployment')
   parser.add_argument('--pages', action='store_true', help='(re)build build/pages/, a self-contained deployment for a static host')
   parser.add_argument('-g','--guide', action='store_true', help='(re)build guidebook keyword index')
   parser.add_argument('--certificate', '--cert', action='store_true', dest='cert', help='(re)build certificate')
@@ -690,6 +691,19 @@ if args.podium:
         print('  NOTE: PWA icons not generated. Install cairosvg or ImageMagick, '
               'or make node and Playwright available.')
 
+if args.doc:
+    #################################
+    #   Guidebook media for deploy  #
+    #################################
+    # doc/assets/ is 42 MB of capture-resolution screenshots and screen
+    # recordings, which is why the guidebook has always been read from the web.
+    # build_doc.py derives a deployable set (13.5 MB) from it; --pages copies
+    # the result in. Encoding takes minutes, so it is its own flag and each
+    # output is rebuilt only when its input or its recipe changes.
+    from build_doc import build_doc_assets
+    if args.verbose: print('Recompressing guidebook media...')
+    build_doc_assets(verbose=args.verbose)
+
 if args.pages:
     #################################
     #   Static-host deployment      #
@@ -708,20 +722,65 @@ if args.pages:
     build_podium_page(os.path.join(pages_dir, 'index.html'), canonical=None)
     for name in ('manifest.webmanifest', 'podauth.html'):
         shutil.copyfile(os.path.join('src', name), os.path.join(pages_dir, name))
+
+    # The guidebook, so App -> Guide does not have to leave the deployment.
+    # src/panel.js probes for it with a HEAD request and uses the published copy
+    # at studiop5.org only when it is absent, so copying it in is the whole
+    # change: nothing in the app needs to know which deployment this is. The
+    # text is left exactly as published, studiop5.org references included --
+    # rewriting prose to match the host would need judgement this cannot apply.
+    doc_dir = os.path.join('build', 'doc-assets')
+    doc_images = sorted(name for name in os.listdir(doc_dir)
+                        if name.endswith('.webp')) if os.path.isdir(doc_dir) else []
+    doc_to_cache = []
+    if not doc_images:
+        print('  NOTE: build/doc-assets/ is empty; run build.py --doc to deploy the guidebook.')
+    else:
+        assets_dir = os.path.join(pages_dir, 'assets')
+        os.makedirs(assets_dir, exist_ok=True)
+        for name in sorted(os.listdir(doc_dir)):
+            if name.startswith('.'): continue    # the recipe manifest
+            shutil.copyfile(os.path.join(doc_dir, name), os.path.join(assets_dir, name))
+        with open(os.path.join('doc', 'Guidebook.html'), encoding='utf-8', newline='') as f:
+            guidebook = f.read()
+        # The deployed screenshots are WebP; the videos keep both codec container
+        # and name, so only the images need redirecting.
+        guidebook, rewritten = re.subn(r'(src="assets/[^"]+)\.jpg"', r'\1.webp"', guidebook)
+        if rewritten != len(doc_images):
+            sys.exit(f'Error: the guidebook names {rewritten} images, '
+                     f'but build/doc-assets/ holds {len(doc_images)}.')
+        with open(os.path.join(pages_dir, 'Guidebook.html'), 'w',
+                  encoding='utf-8', newline='') as f:
+            f.write(guidebook)
+        # Precache the guidebook and its images, so it reads offline. Not the
+        # videos: 11.5 MB against 2.5 MB, already preload="none", and the worker
+        # passes media straight through.
+        doc_to_cache = ['./Guidebook.html'] + [f'./assets/{name}' for name in doc_images]
+
     # The service worker serves the page from its cache, so a deployment whose
     # sw.js is byte-identical to the last one would go unnoticed: the browser
     # sees no new worker, never reinstalls, and keeps answering from the old
-    # cache. Stamp the cache name with the page's own digest, so a changed page
-    # changes the worker, which reinstalls and (see its activate handler) drops
-    # every cache that is not the current one.
-    with open(os.path.join(pages_dir, 'index.html'), 'rb') as f:
-        page_digest = hashlib.sha256(f.read()).hexdigest()[:12]
+    # cache. Stamp the cache name with the digest of everything the worker
+    # precaches, so a change to any of it changes the worker, which reinstalls
+    # and (see its activate handler) drops every cache that is not the current
+    # one. Taking the digest of the page alone would miss a changed guidebook.
+    digest = hashlib.sha256()
+    for relative in ['./index.html'] + doc_to_cache:
+        with open(os.path.join(pages_dir, relative[2:]), 'rb') as f:
+            digest.update(f.read())
+    page_digest = digest.hexdigest()[:12]
     with open(os.path.join('src', 'sw.js'), encoding='utf-8') as f:
         worker = f.read()
     stamp = "const CACHE_NAME = 'podium-v2.3.0';"
     if worker.count(stamp) != 1:
         sys.exit(f'Error: cache name not found exactly once in src/sw.js: {stamp!r}')
     worker = worker.replace(stamp, f"const CACHE_NAME = 'podium-v2.3.0-{page_digest}';")
+    doc_stamp = 'const docToCache = [];'
+    if worker.count(doc_stamp) != 1:
+        sys.exit(f'Error: precache list not found exactly once in src/sw.js: {doc_stamp!r}')
+    if doc_to_cache:
+        listed = ''.join(f"\n  '{url}'," for url in doc_to_cache)
+        worker = worker.replace(doc_stamp, f'const docToCache = [{listed}\n];')
     with open(os.path.join(pages_dir, 'sw.js'), 'w', encoding='utf-8', newline='\n') as f:
         f.write(worker)
     # The manifest names the icons as siblings, so that is where they must go.
