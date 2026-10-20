@@ -23,7 +23,7 @@
   translation was last brought up to date; build.py --pages reports a mismatch
   and prints the digest to paste here once the translation has caught up.
 
-  TRANSLATED-FROM: 610d279f77bdf410
+  TRANSLATED-FROM: 0b14a2824562fd91
 
   UI names (cell, panel, and button labels) are deliberately left in English,
   because that is what the app itself shows; the keyword index is left in
@@ -1286,6 +1286,8 @@ function closeVideo(event, container) {
 
     <p><strong>2 本指のドラッグ:</strong> 2 本指でドラッグすると、最初に画面に触れた指の下にあるものが動きます（両方とも背景に触れていれば、すべてが動きます）。</p>
 
+    <p><strong>元に戻すには:</strong> レイアウトは Fit の設定どおりの状態に戻せます。<a href="#chapter-5-refit" class="chapter-link">第5章: Fit に戻す</a>をご覧ください。メニューとパネルにはそうした設定がないので、既定の状態に戻すには <a href="#chapter-8-storage" class="chapter-link">Storage &rarr; Menu</a> を使います。</p>
+
     <p><strong>マウスの場合:</strong> Ctrl を押しながらドラッグで移動。Ctrl を押しながらホイールを回すと大きさが変わります。より細かく合わせたいときは Ctrl+Shift を押しながら回します。</p>
 
     <h3>背景のジェスチャー</h3>
@@ -1580,6 +1582,8 @@ function closeVideo(event, container) {
     </ul>
 
     <p>譜面は既定で、そのブラウザ／プラットフォームで最後に使ったレイアウトで開きます。まだなければ Book です。レイアウトは、使いたいセルをタップすればいつでも変えられます。譜面を保存するたびに、最後のレイアウトが PDF のメタデータとして、またブラウザのローカルストレージにも記録されます。</p>
+
+    <p id="chapter-5-refit"><strong>Fit に戻す:</strong> 動かして拡大した表示を元に戻し、<strong>Fit</strong> の設定どおりの位置と大きさに戻す方法が 3 つあります。レイアウトのパネルで、すでに選ばれている Fit ボタンをタップする。Layout リングで、すでに有効なレイアウトのセルをタップする。そして、譜面の上を 2 本指でダブルタップする。最後のものは何も開いておく必要がなく、しかも譜面を動かしたのと同じ 2 本の指でできます。2 本指で、指を滑らせずに、短く 2 回タップしてください。2 本指で 1 回タップしただけでは何も起きないので、画面に手を置いてしまっても心配はいりません。</p>
 
     <p id="chapter-5-remembered-view"><strong>表示位置の記憶:</strong> レイアウトをどのように動かし、拡大しても（たとえばタブレットで画面いっぱいになるよう譜面をドラッグしてピンチしても）、Podium はその位置と大きさを覚えています。レイアウトごとに別々の表示を保つので、レイアウトを切り替えて戻ってくると、それぞれ離れたときのままに復元されます。表示は譜面とともに保存されるので、ファイルを開き直すと、前回やめたところにそのまま戻ります。</p>
 
@@ -2749,6 +2753,7 @@ function closeVideo(event, container) {
     <dl>
         <dt>File System Access API</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
         <dt>Firefox settings</dt><dd> &mdash; <a href="#firefox-settings">4.1</a></dd>
+        <dt>Fit</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-5-refit">chapter-5-refit</a></dd>
         <dt>Flatten<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-flatten"/></svg></dt><dd> &mdash; <a href="#chapter-7-flatten">7.7</a></dd>
         <dt>Fling gesture</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a>, <a href="#chapter-5-page-turning">Ch.5</a></dd>
         <dt>Foot Pedal</dt><dd> &mdash; <a href="#chapter-2-foot-pedal">2.4</a>, <a href="#chapter-7-numbers">7.1</a></dd>
@@ -2833,7 +2838,7 @@ function closeVideo(event, container) {
         <dt>Pen</dt><dd> &mdash; <a href="#chapter-6-pen-pencil">6.1</a></dd>
         <dt>Pencil<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-pen"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-pencil"/></svg></dt><dd> &mdash; <a href="#chapter-6-pen-pencil">6.1</a></dd>
         <dt>Piano<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-piano"/></svg></dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
-        <dt>Pinch-zoom</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-3">Ch.3</a></dd>
+        <dt>Pinch-zoom</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-3">Ch.3</a>, <a href="#chapter-5-refit">chapter-5-refit</a></dd>
         <dt>Pitch detector</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
         <dt>Playback</dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
         <dt>Practice scores</dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a></dd>
@@ -2890,6 +2895,7 @@ function closeVideo(event, container) {
         <dt>Timbre</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
         <dt>Transform handles</dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
         <dt>Tuner</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Two-finger double-tap</dt><dd> &mdash; <a href="#chapter-5-refit">chapter-5-refit</a></dd>
     </dl>
     <div class="idx-letter">U</div>
     <dl>

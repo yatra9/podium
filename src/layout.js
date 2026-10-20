@@ -300,6 +300,21 @@ class Layout {
   }
 
 
+  refit() {
+    // Throw away the remembered pan-zoom and rebuild at the cell's Fit setting,
+    // which is the only way back once the score has been pinched and dragged:
+    // switching layouts and back restores the pan-zoom, because remembering it
+    // is the point (see capturePz). Reached by re-tapping the Fit already
+    // chosen, by re-tapping the active layout cell, and by a two-finger
+    // double-tap on the layout.
+    this.cell.stash.pz = null;
+    // Leaving the marker would let the next capturePz() store the fitted
+    // geometry as though it were a view the reader had chosen, so the fit would
+    // survive as a pan-zoom and this would be a reset that resets nothing.
+    this.elm.classList.remove("pz-set");
+    return this.build();
+  }
+
   userPz() {
     // The user's saved pan-zoom for this layout's cell, but only if it was captured
     // at the current viewport size; otherwise null, so the default fit is used.
@@ -2846,6 +2861,11 @@ class Pager {
     );
   }
 }
+
+// Exposed for the test suite, as file.js exposes its own classes: a layout
+// needs a score to exist, so the tests that drive gestures against one stand in
+// a stub here instead.
+window._Layout_ = Layout;
 
 // Per-theme layout CSS vars (recto/verso backgrounds, border, gradient overlay, roll cap color)
 let rectoWarm = "url('data:image/svg+xml;base64,ICAgICAgPHN2ZyB3aWR0aD0nM2VtJyBoZWlnaHQ9JzNlbScgdmlld0JveD0nMCAwIDEwMCAxMDAnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+CiAgICAgICAgPGZpbHRlciBpZD0ncGFwZXJGaWx0ZXInPgogICAgICAgICAgPGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9JzAuNScgCiAgICAgICAgICAgcmVzdWx0PSdub2lzZScgbnVtT2N0YXZlcz0iNCIgc3RpdGNoVGlsZXM9J3N0aXRjaCcgc2VlZD0nNDInLz4KICAgICAgICAgIDxmZUNvbG9yTWF0cml4IGluPSdub2lzZScgdHlwZT0nc2F0dXJhdGUnIHZhbHVlcz0nMCcvPgogICAgICAgICAgPGZlQ29tcG9uZW50VHJhbnNmZXI+CiAgICAgICAgICAgIDxmZUZ1bmNBIHR5cGU9J2xpbmVhcicgc2xvcGU9JzAuMycgaW50ZXJjZXB0PScwLjUnLz4KICAgICAgICAgICAgPC9mZUNvbXBvbmVudFRyYW5zZmVyPgogICAgICAgICAgICA8ZmVDb21wb3NpdGUgaW4yPSdTb3VyY2VHcmFwaGljJyBvcGVyYXRvcj0nbXVsdGlwbHknIHJlc3VsdD0ndGV4dHVyZWQnLz4KICAgICAgICAgIDwvZmlsdGVyPiAgCiAgICAgICAgICA8cmVjdCB3aWR0aD0nMTAwJScgaGVpZ2h0PScxMDAlJyBmaWxsPScjQ0Q4NTNGJyBmaWx0ZXI9J3VybCgjcGFwZXJGaWx0ZXIpJy8+CiAgICAgICAgPC9zdmc+')";
