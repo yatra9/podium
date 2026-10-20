@@ -565,9 +565,14 @@ class Menu {
     this.listen("layout/up", () => this.activateRing(rings.layout));
     let paths = Object.keys(rings.layout.cells).map((path) => `layout/${path}/`);
    
-    this.listen(paths.map((path) => path + "up"), 
+    this.listen(paths.map((path) => path + "up"),
       async (cell) => {
+        // Re-tapping the layout already on screen refits it, discarding a
+        // pinch-and-drag. Opening it again would not: the destructor saves the
+        // pan-zoom and the rebuild restores it, so the tap would cost a
+        // "Formatting" shade and change nothing.
         this.activateCell(cell);
+        if (Layout.activeLayout?.cell == cell) return void Layout.activeLayout.refit();
         await Layout.open(cell);
       }
     );
