@@ -94,8 +94,10 @@ if args.font:
     #################################
 
     # Build the embedded font (build/BravuraText.otf) from pristine lib/BravuraText.otf.
-    from build_font import build_bravura
+    from build_font import build_bravura, build_noto_jp
     build_bravura()
+    # And the Japanese text font, subset from pristine lib/NotoSansJP-Regular.otf.
+    build_noto_jp()
 
     outFileName = 'build/font.js'
 
@@ -167,6 +169,31 @@ if args.font:
     window.fontData["Patrick Hand"] = function() {
       if (!this._bytes) {
         const binary = atob(patrickHandBase64);
+        this._bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          this._bytes[i] = binary.charCodeAt(i);
+        }
+      }
+      return this._bytes;
+    }.bind({});
+
+    // Noto Sans JP, subset to Podium's Japanese glyph set (see build_font.py).
+    // Registered for CSS as well as for PDF embedding, so what the canvas draws
+    // and what gets written to the PDF are the same shapes.
+    const notoSansJpBase64 = \"""")
+
+        with open('build/NotoSansJP-subset.otf','rb') as inFile:
+            outFile.write(base64.b64encode(inFile.read()))
+
+        outFile.write(b"""\";
+
+    let notoSansJpFont = new FontFace("Noto Sans JP", "url(data:font/otf;charset=utf-8;base64," + notoSansJpBase64 + ")");
+    document.fonts.add(notoSansJpFont);
+    await notoSansJpFont.load();
+
+    window.fontData["Noto Sans JP"] = function() {
+      if (!this._bytes) {
+        const binary = atob(notoSansJpBase64);
         this._bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) {
           this._bytes[i] = binary.charCodeAt(i);

@@ -48,6 +48,106 @@ export { Grid, Pg, Score };
 }
 
 
+// The bundled font that has Japanese glyphs. See build_font.py for the glyph
+// set: JIS X 0208's non-kanji rows, its level 1 kanji, and WinAnsi's repertoire
+// so far as the pristine font has it -- being a Japanese language subset, it
+// lacks S-caron, Z-caron, Y-diaeresis and the two spacing accents, which is why
+// resolveTextFont compares the two fonts instead of assuming one contains the
+// other.
+const FALLBACK_PDF_FONT = "Noto Sans JP";
+
+// What pdf-lib's standard fonts accept. They are WinAnsi-encoded and throw on
+// anything else, which is every Japanese character; read out of pdf-lib itself
+// by trying every codepoint through PDFFont.encodeText. Kept here rather than
+// probed at run time so a save never depends on building a throwaway document.
+const winAnsiRanges = [
+  [0x20, 0x7e], [0xa0, 0xff], [0x152, 0x153], [0x160, 0x161], [0x178, 0x178],
+  [0x17d, 0x17e], [0x192, 0x192], [0x2c6, 0x2c6], [0x2dc, 0x2dc],
+  [0x2013, 0x2014], [0x2018, 0x201a], [0x201c, 0x201e], [0x2020, 0x2022],
+  [0x2026, 0x2026], [0x2030, 0x2030], [0x2039, 0x203a], [0x20ac, 0x20ac],
+  [0x2122, 0x2122],
+];
+
+let fontkitFonts = {}; // pdf font name -> fontkit font, for glyph coverage
+
+/**
+   Tells whether a bundled font can show a character.
+
+   The two kinds of font fail differently, and only one of them fails loudly. A
+   standard font throws "WinAnsi cannot encode" and takes the whole save with
+   it. A custom font does not throw at all: fontkit returns glyph 0 and the
+   character is quietly replaced by a blank, so text would go missing from a
+   saved score without a word about it. Asking first is what lets the caller
+   warn instead.
+**/
+function fontCanShow(pdfFontName, codePoint) {
+  // Newlines are handled by the drawing code, not by the font.
+  if (codePoint == 0x0a || codePoint == 0x0d) return true;
+  let fontData = window.fontData[pdfFontName];
+  if (!fontData) // a standard font: WinAnsi and nothing more
+    return winAnsiRanges.some(([lo, hi]) => codePoint >= lo && codePoint <= hi);
+  if (!fontkitFonts[pdfFontName]) {
+    if (typeof fontData == "function") fontData = fontData();
+    fontkitFonts[pdfFontName] = window.fontkit.create(fontData);
+  }
+  return fontkitFonts[pdfFontName].hasGlyphForCodePoint(codePoint);
+}
+
+/**
+   Chooses the font to write text with, and reports what will still be lost.
+
+   Returns { pdfFontName, missing }: the font to use, and the codepoints even
+   that font cannot show. The requested font wins wherever it can carry the
+   text, so Japanese elsewhere in the score does not drag Latin text into
+   another typeface.
+**/
+function resolveTextFont(text, requested) {
+  let points = [...text].map(c => c.codePointAt(0));
+  let missingIn = name => points.filter(cp => !fontCanShow(name, cp));
+  let requestedMissing = missingIn(requested);
+  if (!requestedMissing.length) return { pdfFontName: requested, missing: [] };
+
+  // A standard font does not merely omit what it cannot encode: it throws, and
+  // takes the whole save with it. So any gap at all disqualifies it, even where
+  // the fallback has gaps of its own. A custom font substitutes a blank
+  // instead, which is survivable once the user has been told.
+  let fallbackMissing = missingIn(FALLBACK_PDF_FONT);
+  let standard = !window.fontData[requested];
+  if (standard || fallbackMissing.length < requestedMissing.length)
+    return { pdfFontName: FALLBACK_PDF_FONT, missing: fallbackMissing };
+  return { pdfFontName: requested, missing: requestedMissing };
+}
+
+/**
+   Warns that characters will be written as blanks, and lets the save be
+   abandoned. Resolves to continue, or throws with cause "cancelled", which
+   errDialog reports as a plain "Cancelled".
+
+   The characters come from the user's own text, so they are escaped: file.js's
+   escapeHtml is not imported because file.js imports this module, and the cycle
+   is not worth one helper.
+**/
+function confirmMissingGlyphs(characters) {
+  let shown = [...characters].map(c =>
+    c.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")).join(" ");
+  return new Promise((accept, reject) =>
+    dialog(
+      `These characters are not in any font Podium carries, so they would be
+       saved as blanks:<br><br><strong style="font-size:1.4em">${shown}</strong><br><br>
+       Your annotations are kept either way, so they will still be here when
+       Podium reopens this score. It is the PDF's own text that loses them.
+       <br><br>Save anyway?`,
+      { Save: { svg: "Save" }, Cancel: { svg: "Cancel" } },
+      (_event, _prop, tag, args) => {
+        args.close();
+        if (tag == "Cancel") reject(new Error("Save cancelled.", { cause: "cancelled" }));
+        else accept();
+      }
+    ).addEventListener("cancel", () =>
+      reject(new Error("Save cancelled.", { cause: "cancelled" })), { once: true })
+  );
+}
+
 /**
 class Pg
   Represents a page in a score.  Named Pg, not Pg, and its instances
@@ -762,13 +862,26 @@ class Pg {
         case "text":
         case "textbox": {
           // find the pdf font name from object's fontFamily, fontStyle, and fontWeight values
-          let pdfFontName = fontUnmap[`${obj.fontFamily}/${obj.fontStyle}/${obj.fontWeight}`];
-          if (!pdfFontName) pdfFontName = "Times-Roman";
+          let requestedFont = fontUnmap[`${obj.fontFamily}/${obj.fontStyle}/${obj.fontWeight}`];
+          if (!requestedFont) requestedFont = "Times-Roman";
+          // Pass the text through the font first. The standard fonts are
+          // WinAnsi-encoded and would throw on, say, Japanese, taking the whole
+          // save with them; the fallback carries it instead. Anything no
+          // bundled font can show is collected for toPdfAux to warn about,
+          // since otherwise it would just go missing from the saved score.
+          let drawnText = obj.textLines ? obj.textLines.join("\n") : obj.text;
+          let { pdfFontName, missing } = resolveTextFont(drawnText ?? "", requestedFont);
+          for (let codePoint of missing)
+            this.score.missingGlyphs?.add(String.fromCodePoint(codePoint));
           let pdfFont = this.score.embeddedFonts[pdfFontName];
           if (!pdfFont) {
             let fontData = window.fontData[pdfFontName];
             if (typeof fontData == 'function') fontData = fontData();
-            pdfFont = await pLibPg.doc.embedFont(fontData ?? pdfFontName);
+            // subset: true, or the font's every glyph is embedded in every
+            // saved score: 91 KB against 3 KB for a 212 KB font, and the
+            // Japanese font is 674 KB.
+            pdfFont = await pLibPg.doc.embedFont(fontData ?? pdfFontName,
+                                                 fontData ? { subset: true } : undefined);
             this.score.embeddedFonts[pdfFontName] = pdfFont;
           }
           // For PDFLib, y: locates baseline of first (or only) line of text, but fabric's y
@@ -780,9 +893,8 @@ class Pg {
           // Pass fabric's already-wrapped lines instead of letting pdf-lib wrap
           // via maxWidth: pdf-lib measures with the embedded font, which won't
           // match the canvas font, so its wrap points would differ from screen.
-          let text = obj.textLines ? obj.textLines.join("\n") : obj.text;
           await this.objToPdf(obj, ink, pLibPg, pLibPg.drawText, [
-            text,
+            drawnText,
             {
               x: pp.x,
               y: pageHeight - pp.y,
@@ -1161,6 +1273,7 @@ class Score {
   permissions = null;   // array of allowed PermissionFlag values, or null if no encrypt dict
 
   embeddedFonts = null; // Used by this.toPDF() to prevent fonts from being embedded more than once
+  missingGlyphs = null; // Set of characters no bundled font could show, collected by toPdf()
   maxHeight = -1; // maxHeight among all pg's in score
   maxWidth = -1; // maxWidth among all pg's in score
   pgs = []; // array of Pg instances for all pages in a score
@@ -1688,6 +1801,7 @@ class Score {
       dstPLibDoc.registerFontkit(window.fontkit);
       // Reset the embeddedFonts array: it prevents Pg instances from embedding same font twice.
       this.embeddedFonts = [];
+      this.missingGlyphs = new Set();
       let now = new Date();
 
       // Snapshot the active layout's current pan-zoom into its cell stash so the save
@@ -1734,6 +1848,13 @@ class Score {
         attachment.pages[j+1] = pgJson;
         if(window.gc) window.gc();
       }
+
+      // A character no bundled font can show would be written as a blank, and
+      // the score would come back from a round trip with holes in its text and
+      // nothing said about it. Ask before that happens. The annotations
+      // themselves survive either way: they are kept verbatim in the attachment
+      // below, so only the PDF's own rendering loses them.
+      if (this.missingGlyphs.size) await confirmMissingGlyphs(this.missingGlyphs);
 
       // Add the pdf attachment
       let jsonString = JSON.stringify(attachment);
@@ -1783,3 +1904,4 @@ class Score {
 
 }
 window._Score_ = Score;
+window._resolveTextFont_ = resolveTextFont; window._fontCanShow_ = fontCanShow;
