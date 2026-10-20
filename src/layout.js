@@ -300,7 +300,7 @@ class Layout {
   }
 
 
-  refit() {
+  async refit() {
     // Throw away the remembered pan-zoom and rebuild at the cell's Fit setting,
     // which is the only way back once the score has been pinched and dragged:
     // switching layouts and back restores the pan-zoom, because remembering it
@@ -312,7 +312,23 @@ class Layout {
     // geometry as though it were a view the reader had chosen, so the fit would
     // survive as a pan-zoom and this would be a reset that resets nothing.
     this.elm.classList.remove("pz-set");
-    return this.build();
+    // A quiet rebuild: the fit lives in the em geometry, which this recomputes,
+    // and the flight out of the menu cell is exactly what is not wanted here --
+    // the view is already on screen and is meant to snap back, not arrive. What
+    // a quiet rebuild also does not do is move the layout, since a rebuild
+    // after a cut or a paste must leave the reader's view alone, so place it.
+    await this.build(false);
+    this.place();
+  }
+
+  place() {
+    // Put the layout where a fresh open would have landed it, instantly.
+    // centerLT measures the built layout, so the font size has to be settled
+    // first -- and settled it is, at 1em, since the fit is carried by the em
+    // geometry rather than by the scale it is drawn at.
+    this.elm.style.fontSize = "1em";
+    reflow();
+    Object.assign(this.elm.style, this.centerLT());
   }
 
   userPz() {
@@ -2293,6 +2309,14 @@ class TableLayout extends Layout {
     }
   }
 
+  place() {
+    // buildAux has already applied the fit, and expresses a Height fit as a
+    // font size of its own, so this is the one layout that must keep the size
+    // it was given rather than reset to 1em: only the centring is left.
+    reflow();
+    Object.assign(this.elm.style, this.centerLT());
+  }
+
   buildAux() {
     // set layout's final position/size, based on this.fit (or the saved pan-zoom from userPz(), if any). Called after
     // build one of 2 locations: 1. all thumbnails 2. user cancelled in-flight thumbnail build
@@ -2313,8 +2337,9 @@ class TableLayout extends Layout {
       if(this.animated)
         animate(this.elm, { left:iconBox.x + "px", top:iconBox.top + "px", fontSize: 0},
           this.centerLT({ fontSize: this.elm.style.fontSize}), `left, top, font-size ${_gs_}ms`);
-      else 
-        this.centerLT({ fontSize: this.elm.style.fontSize}); 
+      // A quiet rebuild -- after a page was cut or pasted, say -- leaves the
+      // layout where the reader put it, as every other layout does, so there is
+      // nothing to do here. refit() centres it through place() instead.
     }
   }
 
