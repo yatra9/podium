@@ -84,6 +84,36 @@ test("the static-host build stamps itself so a device can be checked", async ({ 
   expect(await page.evaluate(() => window._podiumBuild_)).toBe("dev");
 });
 
+test("the guidebook comes from the web only where it is not published beside the page", async ({ page }) => {
+  // The guidebook and its 78 assets are not part of this deployment, so a
+  // relative URL 404s -- and a 404 body loads into the iframe just as happily
+  // as a guidebook would. Resolving the URL must not need the network either,
+  // so any request off the origin fails the test.
+  const offOrigin = [];
+  await page.route("**", route => {
+    const url = route.request().url();
+    if (url.startsWith("http://127.0.0.1:9876/") || url.startsWith("http://localhost:9876/"))
+      return route.continue();
+    offOrigin.push(url);
+    return route.abort();
+  });
+
+  await page.goto("/pages/index.html");
+  await expect.poll(() => page.evaluate(() => typeof window._panels_?.GuidePanel)).toBe("function");
+  expect(await page.evaluate(() => window._panels_.GuidePanel.resolveUrl()))
+    .toBe("https://studiop5.org/Guidebook.html");
+
+  // Served beside the page -- the static server's roots include doc/ -- the
+  // local copy wins, which is what keeps the web app's guidebook same-origin
+  // and readable offline.
+  await page.goto("/pod.html");
+  await expect.poll(() => page.evaluate(() => typeof window._panels_?.GuidePanel)).toBe("function");
+  expect(await page.evaluate(() => window._panels_.GuidePanel.resolveUrl()))
+    .toBe("http://127.0.0.1:9876/Guidebook.html");
+
+  expect(offOrigin).toEqual([]);
+});
+
 test("the service worker's cache name follows the page it serves", async () => {
   // A deployment whose sw.js is byte-identical to the last one goes unnoticed:
   // the browser sees no new worker, never reinstalls, and keeps answering from

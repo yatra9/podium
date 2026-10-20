@@ -1270,9 +1270,29 @@ class GridPanel extends Panel {
 }
 
 class GuidePanel extends Panel {
-  static guidebookUrl = typeof chrome !== "undefined" && chrome.runtime?.id
-    ? `https://studiop5.org/Guidebook.html`
-    : `Guidebook.html`;
+  // Where the guidebook lives depends on how Podium was deployed. The web app
+  // publishes it beside the page, where a relative URL keeps it same-origin.
+  // A static-host deployment does not carry it at all, and neither does the
+  // extension or a page saved to disk, so those have to borrow the published
+  // copy (which is served with "frame-ancestors *", so it will embed).
+  // The absence has to be found before the iframe is pointed at it: a 404 body
+  // fires the load event just as a guidebook would, and would be displayed.
+  static localUrl = new URL("Guidebook.html", location.href).href;
+  static publishedUrl = `https://studiop5.org/Guidebook.html`;
+  static isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
+  static guidebookUrl = null;
+
+  static async resolveUrl() {
+    if (this.guidebookUrl) return this.guidebookUrl;
+    if (this.isExtension) return this.guidebookUrl = this.publishedUrl;
+    // A 404 is an answer and is remembered. A fetch that fails outright is not:
+    // being offline, or on file:// where fetching a sibling is forbidden, would
+    // otherwise pin the published copy for the rest of the session -- even on
+    // the site that publishes its own guidebook beside the page.
+    let found = await fetch(this.localUrl, { method: "HEAD" }).then(r => r.ok, () => null);
+    if (found === null) return this.publishedUrl;
+    return this.guidebookUrl = found ? this.localUrl : this.publishedUrl;
+  }
 
   content = helm(
     `<div style="padding:0;width:100%;height:100%;box-sizing:border-box;overflow:hidden;position:relative;">
@@ -1299,24 +1319,31 @@ class GuidePanel extends Panel {
   }
 
   show() {
-    if (typeof chrome !== "undefined" && chrome.runtime?.id) {
+    if (GuidePanel.isExtension) {
       // Extension: open in new tab (cross-origin iframe restrictions prevent embedding)
       if (this.guideWin && !this.guideWin.closed) this.guideWin.focus();
-      else  this.guideWin = window.open(GuidePanel.guidebookUrl, "podium-guidebook");
+      else  this.guideWin = window.open(GuidePanel.publishedUrl, "podium-guidebook");
       return this;
     }
     super.show();
     if (this.fetched) return this;
     this.fetched = true;
     this.msg.textContent = "Fetching Guidebook...";
-    this.iframe.src = GuidePanel.guidebookUrl;
-    listen(this.iframe, "load", () => {
-      this.iframe.style.display = "block";
-      this.msg.style.display = "none";
-    }, { once: true });
-    if (!navigator.onLine) {
-      this.msg.textContent = "Guidebook is not available.";
-    }
+    GuidePanel.resolveUrl().then((url) => {
+      // Only the published copy needs the network, and only it can be defeated
+      // by being offline. The probe above has already failed by then, so this
+      // is the one place that can say so.
+      if (url != GuidePanel.localUrl && !navigator.onLine) {
+        this.msg.textContent = "Guidebook is not available offline.";
+        this.fetched = false; // Try again when the panel is next opened.
+        return;
+      }
+      listen(this.iframe, "load", () => {
+        this.iframe.style.display = "block";
+        this.msg.style.display = "none";
+      }, { once: true });
+      this.iframe.src = url;
+    });
     return this;
   }
 }
