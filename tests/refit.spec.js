@@ -135,25 +135,105 @@ test("the gesture answers for the layout alone", async ({ page }) => {
   expect(await page.evaluate(() => window.__refits)).toBe(0);
 });
 
-test("refit discards the remembered view and rebuilds", async ({ page }) => {
+test("refit discards the remembered view and rebuilds without the flight", async ({ page }) => {
   // The real method, on a stub standing in for a built layout: forgetting the
   // pan-zoom is not enough, because the marker left behind would let the next
   // capturePz() store the fitted geometry as a view the reader had chosen --
-  // and the reset would then survive as a pan-zoom of its own.
-  const after = await page.evaluate(() => {
+  // and the reset would then survive as a pan-zoom of its own. The rebuild has
+  // to be the quiet one, or the layout flies out of the menu cell again, which
+  // is a long way round for a view that is already on screen.
+  const after = await page.evaluate(async () => {
     const elm = document.createElement("div");
     elm.classList.add("pz-set");
     const layout = {
       elm,
       cell: { stash: { pz: { left: "10px", top: "20px", fontSize: "2em", w: 1, h: 1 } } },
-      built: false,
-      build() { this.built = true; },
+      built: null,
+      placed: false,
+      build(animated) { this.built = animated; },
+      place() { this.placed = true; },
     };
-    window._Layout_.prototype.refit.call(layout);
-    return { pz: layout.cell.stash.pz, marked: elm.classList.contains("pz-set"), built: layout.built };
+    await window._Layout_.prototype.refit.call(layout);
+    return {
+      pz: layout.cell.stash.pz, marked: elm.classList.contains("pz-set"),
+      built: layout.built, placed: layout.placed,
+    };
   });
 
-  expect(after).toEqual({ pz: null, marked: false, built: true });
+  expect(after).toEqual({ pz: null, marked: false, built: false, placed: true });
+});
+
+test("placing a layout puts it at its fit, centred, at once", async ({ page }) => {
+  // A quiet rebuild deliberately leaves the layout where it is -- that is what
+  // makes it right after a cut or a paste -- so refit has to place it, and the
+  // zoom a pinch left behind has to go with it.
+  const placed = await page.evaluate(() => {
+    const elm = document.createElement("div");
+    Object.assign(elm.style, { position: "absolute", left: "17px", top: "23px", fontSize: "2.4em" });
+    const child = document.createElement("div");
+    Object.assign(child.style, { width: "200px", height: "100px" });
+    elm.append(child);
+    document.body.append(elm);
+    const layout = { elm, centerLT: window._Layout_.prototype.centerLT };
+    window._Layout_.prototype.place.call(layout);
+    return {
+      fontSize: elm.style.fontSize,
+      left: elm.style.left, top: elm.style.top,
+      middle: `${innerWidth / 2}px`,
+    };
+  });
+
+  expect(placed.fontSize).toBe("1em");
+  // centerLT centres the firstChild on the viewport, holding it a margin clear
+  // of the top left; a 200x100 child in a window this size clears it.
+  expect(placed.left).toBe(placed.middle);
+  expect(placed.top).not.toBe("23px");
+});
+
+test("every layout snaps back to the state it was built in", async ({ page }) => {
+  // The stubs above pin down the plumbing; this is the behaviour. A score is
+  // needed for a real layout, and Score -> New makes an empty one, so all four
+  // layouts can be built, pinched, and refitted for real. What must come back
+  // is the state each was built in, with no transition left running: a layout
+  // that flies out of the menu cell again has travelled a long way round for a
+  // view that was already on screen.
+  test.setTimeout(90_000);
+  await page.evaluate(() => window._menu_.notify("score/new/up"));
+  await expect.poll(() => page.evaluate(() => !!window._score_), { timeout: 30_000 }).toBe(true);
+
+  for (const key of ["book", "horizontal", "vertical", "table"]) {
+    const result = await page.evaluate(async (key) => {
+      const Layout = window._Layout_;
+      await Layout.open(window._menu_.rings.layout.cells[key]);
+      const layout = Layout.activeLayout;
+      const read = () => ({
+        fontSize: layout.elm.style.fontSize,
+        left: layout.elm.style.left,
+        top: layout.elm.style.top,
+        marked: layout.elm.classList.contains("pz-set"),
+      });
+      // The opening animation has to land before anything is measured.
+      await new Promise(done => setTimeout(done, _gs_ * 2));
+      const fitted = read();
+
+      // Stand in for a pinch and a drag, as the gesture code would leave them.
+      Object.assign(layout.elm.style, { fontSize: "2.3em", left: "40px", top: "40px" });
+      layout.elm.classList.add("pz-set");
+
+      await layout.refit();
+      const after = read();
+      // No transition may be running, or the snap is a flight after all.
+      const transition = layout.elm.style.transition;
+      // And nothing may be left for the next save or layout switch to restore.
+      layout.capturePz();
+      return { fitted, after, transition, pz: layout.cell.stash.pz };
+    }, key);
+
+    expect(result.after, key).toEqual(result.fitted);
+    expect(result.transition, key).toBe("unset");
+    expect(result.pz, key).toBe(null);
+    expect(result.fitted.marked, key).toBe(false);
+  }
 });
 
 test("re-tapping the layout already on screen refits instead of reopening", async ({ page }) => {
