@@ -44,6 +44,16 @@ let err = (call, msg) => {
   throw new Error(msg, { cause: "fileSrc" });
 };
 
+/**
+   Throws a provider-side failure that the user should be shown. errDialog only
+   puts error.message in the dialog for cause "fileSrc"; anything else is
+   replaced by "Details in console", which is no help on a tablet.
+**/
+let srcErr = (msg) => {
+  console.warn(`**** Podium FileSrc error: ${msg}`);
+  throw new Error(msg, { cause: "fileSrc" });
+};
+
 let errDialog = (error, msg) => {
   // Craft an error dialog, given an exception variable and a msg.
   // error.message is plain text (it may quote external sources), so it's escaped: newlines become line breaks.
@@ -1962,7 +1972,7 @@ class PCloudDirectAuth {
     let response = await fetch(`https://${this.apiHost}/getdigest`, { referrerPolicy: "no-referrer" });
     let payload = await response.json();
     if (!response.ok || payload.result !== 0 || !payload.digest)
-      throw new Error(`pCloud getdigest failed: ${payload.error || response.status}`);
+      srcErr(`pCloud getdigest failed: ${payload.error || response.status}`);
     // An unreadable expiry must not be treated as a long one: expire it now, so
     // the digest is used for this request and never reused.
     let expires = Date.parse(payload.expires);
@@ -2133,7 +2143,7 @@ function zipEndOfCentralDirectory(view) {
   let limit = Math.max(0, view.byteLength - 22 - 0xffff);
   for (let offset = view.byteLength - 22; offset >= limit; offset--)
     if (view.getUint32(offset, true) === 0x06054b50) return offset;
-  throw new Error("The pCloud archive has no end-of-central-directory record.");
+  srcErr("The pCloud archive has no end-of-central-directory record.");
 }
 
 /**
@@ -2143,23 +2153,23 @@ function zipEndOfCentralDirectory(view) {
 **/
 async function unzipSingleEntry(archive) {
   if (archive[0] !== 0x50 || archive[1] !== 0x4b)
-    throw new Error(`pCloud returned ${archive.length} bytes without a zip signature.`);
+    srcErr(`pCloud returned ${archive.length} bytes without a zip signature.`);
   let view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
   let end = zipEndOfCentralDirectory(view);
-  if (!view.getUint16(end + 10, true)) throw new Error("The pCloud archive is empty.");
+  if (!view.getUint16(end + 10, true)) srcErr("The pCloud archive is empty.");
   let directory = view.getUint32(end + 16, true);
   if (view.getUint32(directory, true) !== 0x02014b50)
-    throw new Error("The pCloud archive's central directory is malformed.");
+    srcErr("The pCloud archive's central directory is malformed.");
 
   let method = view.getUint16(directory + 10, true);
   let compressedSize = view.getUint32(directory + 20, true);
   let local = view.getUint32(directory + 42, true);
   if (compressedSize === 0xffffffff || local === 0xffffffff)
-    throw new Error("The pCloud archive uses Zip64 fields Podium does not read.");
+    srcErr("The pCloud archive uses Zip64 fields Podium does not read.");
   if (view.getUint32(local, true) !== 0x04034b50)
-    throw new Error("The pCloud archive's local file header is malformed.");
+    srcErr("The pCloud archive's local file header is malformed.");
   if (method !== 0 && method !== 8)
-    throw new Error(`The pCloud archive uses compression method ${method}, which Podium does not read.`);
+    srcErr(`The pCloud archive uses compression method ${method}, which Podium does not read.`);
 
   // The local header's name and extra fields may differ in length from the
   // central directory's, so the data offset must come from the local header.
@@ -2210,9 +2220,9 @@ class PCloudSrc extends CachedSrc {
     let response = await fetch(...await this.signed(method, params, options));
     let payload;
     try { payload = await response.json(); }
-    catch (_error) { throw new Error(`pCloud ${method} returned HTTP ${response.status}.`); }
+    catch (_error) { srcErr(`pCloud ${method} returned HTTP ${response.status}.`); }
     if (!response.ok || payload.result !== 0)
-      throw new Error(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
+      srcErr(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
     return payload;
   }
 
@@ -2262,13 +2272,13 @@ class PCloudSrc extends CachedSrc {
   **/
   async requestBytes(method, params = {}, options = {}) {
     let response = await fetch(...await this.signed(method, params, options));
-    if (!response.ok) throw new Error(`pCloud ${method} returned HTTP ${response.status}.`);
+    if (!response.ok) srcErr(`pCloud ${method} returned HTTP ${response.status}.`);
     let buffer = await response.arrayBuffer();
     if ((response.headers.get("content-type") || "").includes("json")) {
       let payload;
       try { payload = JSON.parse(new TextDecoder().decode(buffer)); }
-      catch (_error) { throw new Error(`pCloud ${method} returned unreadable data.`); }
-      throw new Error(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
+      catch (_error) { srcErr(`pCloud ${method} returned unreadable data.`); }
+      srcErr(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
     }
     return new Uint8Array(buffer);
   }
@@ -2292,9 +2302,9 @@ class PCloudSrc extends CachedSrc {
   **/
   async getFileFromContentHost(file) {
     let link = await this.request("getfilelink", { fileid: file.id, contenttype: "application/pdf" });
-    if (!link.hosts?.length || !link.path) throw new Error("pCloud returned no download location.");
+    if (!link.hosts?.length || !link.path) srcErr("pCloud returned no download location.");
     let response = await fetch(`https://${link.hosts[0]}${link.path}`, { referrerPolicy: "no-referrer" });
-    if (!response.ok) throw new Error(`pCloud download failed with HTTP ${response.status}.`);
+    if (!response.ok) srcErr(`pCloud download failed with HTTP ${response.status}.`);
     return await response.arrayBuffer();
   }
 

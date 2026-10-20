@@ -145,7 +145,7 @@ test("pCloud surfaces a getzip error envelope rather than parsing it as an archi
     body: JSON.stringify({ result: 1000, error: "Log in required." }),
   }));
 
-  const message = await page.evaluate(async () => {
+  const thrown = await page.evaluate(async () => {
     const src = new window._PCloudSrc_({
       authenticate: async () => {},
       requestAuth: async () => ({ apiHost: "api.pcloud.com", params: {}, headers: {} }),
@@ -155,11 +155,16 @@ test("pCloud surfaces a getzip error envelope rather than parsing it as an archi
       await src.getFile("", "Etude.pdf");
       return "no error";
     } catch (error) {
-      return error.message;
+      return { message: error.message, cause: error.cause };
     }
   });
 
-  expect(message).toBe("pCloud getzip failed: Log in required. (result 1000).");
+  // errDialog only puts error.message in the dialog for cause "fileSrc", and
+  // otherwise replaces it with "Details in console" -- no help on a tablet.
+  expect(thrown).toEqual({
+    message: "pCloud getzip failed: Log in required. (result 1000).",
+    cause: "fileSrc",
+  });
 });
 
 test("pCloud uploads as multipart/form-data so the request is never preflighted", async ({ page }) => {
