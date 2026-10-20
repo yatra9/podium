@@ -3,6 +3,7 @@ import argparse
 import base64
 import gzip
 import hashlib
+from datetime import datetime, timezone
 import shutil
 import zlib
 from io import StringIO
@@ -490,10 +491,22 @@ def build_podium_page(outFileName, canonical="https://studiop5.org/podium"):
     # the Packager reads its input as javascript, and would strip, say, the
     # rest of any line of html text containing "//".
     head, tail = page.split(PODIUM_PAGE_INCLUDE)
+    packaged = StringIO()
+    packaged.write(head)
+    Packager("src/pod.html", StringIO(PODIUM_PAGE_INCLUDE), packaged)
+    packaged.write(tail)
+    # Stamp the build so the Version panel can say which one is running. The
+    # version alone cannot answer that, and it is the question every PWA update
+    # raises: the service worker may still be answering from its cache. Matched
+    # loosely because the Packager minifies the spacing away.
+    stamped, count = re.subn(
+        r'window\._podiumBuild_\s*=\s*"dev"',
+        'window._podiumBuild_ = "%s"' % datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
+        packaged.getvalue(), count=1)
+    if count != 1:
+        sys.exit('Error: window._podiumBuild_ = "dev" not found in the packaged page.')
     with open(outFileName, "w", encoding='utf-8', newline='\n') as outFileObj:
-        outFileObj.write(head)
-        Packager("src/pod.html", StringIO(PODIUM_PAGE_INCLUDE), outFileObj)
-        outFileObj.write(tail)
+        outFileObj.write(stamped)
 
 if args.extension:
     # A packaged Podium page always references this worklet. Keep extension

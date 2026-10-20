@@ -78,6 +78,12 @@ Element.prototype["replace"] = function(newElm) {
 
 // window._menu_  // defined in main.js
 window._podiumVersion_ = "2.3.0";
+// Replaced by build.py with the build's UTC timestamp. It stays "dev" when the
+// sources are served directly, and the Version panel shows it, because the
+// version alone cannot tell you whether a deployment reached a device: that
+// question comes up on every PWA update, where the service worker may still be
+// answering from its cache.
+window._podiumBuild_ = "dev";
 window._body_ = document.body;
 window._lastTarget_ = null; // last touched .pz element, excluding EditPanel
 window._dvPxRt_ = 1 + (devicePixelRatio - 1) * 0.3;

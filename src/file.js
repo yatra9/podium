@@ -65,7 +65,11 @@ let errDialog = (error, msg) => {
   else if (error.cause == "fileSrc") dialog(`<em>${msg}</em><br><br><strong>${message()}</strong>`);
   else {
     console.error(`*** Unexpected Podium Error:`, error);
-    dialog(`<em>Unexpected Error</em><br><br><strong>${msg}</strong><br><br>Details in console.`);
+    // The reason goes in the dialog, not only the console. On a tablet the
+    // console costs a USB cable and a desktop machine, so "Details in console"
+    // is where diagnosis stops -- which is exactly where it stopped.
+    dialog(`<em>Unexpected Error</em><br><br><strong>${msg}</strong><br><br>` +
+           `<span style="font-size:.8em">${escapeHtml(error.name)}: ${message()}</span>`);
   }
 };
 
