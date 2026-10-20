@@ -691,6 +691,25 @@ if args.podium:
         print('  NOTE: PWA icons not generated. Install cairosvg or ImageMagick, '
               'or make node and Playwright available.')
 
+GUIDEBOOK_EN = os.path.join('doc', 'Guidebook.html')
+GUIDEBOOK_JA = os.path.join('doc', 'Guidebook.ja.html')
+INDEX_BEGIN_MARK = '<!-- BEGIN KEYWORD INDEX -->'
+INDEX_END_MARK = '<!-- END KEYWORD INDEX -->'
+
+def guidebook_prose_digest(path=GUIDEBOOK_EN):
+    """Digest the English guidebook with the generated keyword index left out.
+
+    The translation tracks the prose. --guide rewrites the index in both files
+    from the same data, so counting it would report every index rebuild as a
+    translation that had fallen behind.
+    """
+    with open(path, encoding='utf-8') as f:
+        text = f.read()
+    begin, end = text.find(INDEX_BEGIN_MARK), text.find(INDEX_END_MARK)
+    if begin != -1 and end != -1:
+        text = text[:begin] + text[end + len(INDEX_END_MARK):]
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+
 if args.doc:
     #################################
     #   Guidebook media for deploy  #
@@ -729,6 +748,12 @@ if args.pages:
     # change: nothing in the app needs to know which deployment this is. The
     # text is left exactly as published, studiop5.org references included --
     # rewriting prose to match the host would need judgement this cannot apply.
+    #
+    # Only the Japanese translation is deployed. It is what this deployment's
+    # readers want, the panel leads with whichever translation it finds, and
+    # carrying both would double the 7.4 MB precache for a copy that is one tap
+    # and one request away: the panel's language switch falls back to the
+    # published English guidebook, which needs the network but nothing else.
     doc_dir = os.path.join('build', 'doc-assets')
     doc_images = sorted(name for name in os.listdir(doc_dir)
                         if name.endswith('.webp')) if os.path.isdir(doc_dir) else []
@@ -741,21 +766,33 @@ if args.pages:
         for name in sorted(os.listdir(doc_dir)):
             if name.startswith('.'): continue    # the recipe manifest
             shutil.copyfile(os.path.join(doc_dir, name), os.path.join(assets_dir, name))
-        with open(os.path.join('doc', 'Guidebook.html'), encoding='utf-8', newline='') as f:
+        with open(GUIDEBOOK_JA, encoding='utf-8', newline='') as f:
             guidebook = f.read()
+        # A translation that has fallen behind the prose it was made from is
+        # still worth deploying -- most of it is still right -- so this reports
+        # rather than refuses, and prints what to paste once it has caught up.
+        prose_digest = guidebook_prose_digest()
+        stamped = re.search(r'TRANSLATED-FROM: ([0-9a-f]{16})', guidebook)
+        if not stamped:
+            print(f'  NOTE: {GUIDEBOOK_JA} carries no TRANSLATED-FROM stamp.')
+        elif stamped.group(1) != prose_digest:
+            print(f'  NOTE: {GUIDEBOOK_JA} was translated from an older '
+                  f'{GUIDEBOOK_EN}; deploying it anyway.\n'
+                  f'        Re-stamp it with TRANSLATED-FROM: {prose_digest} '
+                  f'once the translation has caught up.')
         # The deployed screenshots are WebP; the videos keep both codec container
         # and name, so only the images need redirecting.
         guidebook, rewritten = re.subn(r'(src="assets/[^"]+)\.jpg"', r'\1.webp"', guidebook)
         if rewritten != len(doc_images):
             sys.exit(f'Error: the guidebook names {rewritten} images, '
                      f'but build/doc-assets/ holds {len(doc_images)}.')
-        with open(os.path.join(pages_dir, 'Guidebook.html'), 'w',
+        with open(os.path.join(pages_dir, 'Guidebook.ja.html'), 'w',
                   encoding='utf-8', newline='') as f:
             f.write(guidebook)
         # Precache the guidebook and its images, so it reads offline. Not the
         # videos: 11.5 MB against 2.5 MB, already preload="none", and the worker
         # passes media straight through.
-        doc_to_cache = ['./Guidebook.html'] + [f'./assets/{name}' for name in doc_images]
+        doc_to_cache = ['./Guidebook.ja.html'] + [f'./assets/{name}' for name in doc_images]
 
     # The service worker serves the page from its cache, so a deployment whose
     # sw.js is byte-identical to the last one would go unnoticed: the browser
@@ -1109,6 +1146,24 @@ if args.guide:
 
     with open(GUIDEBOOK_PATH, 'w', encoding='utf-8') as f:
         f.write(guide_html)
+
+    # The same index goes into the translation. It indexes English terms against
+    # ids, and every id is shared, so one block serves both files -- and a term
+    # looked up in the index is a term the app itself shows in English anyway.
+    # Only the replacement branch applies here: a translation without the
+    # markers has not been prepared for an index, and guessing where to put one
+    # (its own TOC entry is translated) would be worse than saying so.
+    if os.path.exists(GUIDEBOOK_JA):
+        with open(GUIDEBOOK_JA, 'r', encoding='utf-8') as f:
+            translated = f.read()
+        if INDEX_BEGIN in translated and INDEX_END in translated:
+            before = translated[:translated.index(INDEX_BEGIN)]
+            after = translated[translated.index(INDEX_END) + len(INDEX_END):]
+            with open(GUIDEBOOK_JA, 'w', encoding='utf-8') as f:
+                f.write(before + index_html + after)
+        else:
+            print(f'  NOTE: {GUIDEBOOK_JA} has no keyword index markers; '
+                  'its index was left alone.')
 
     if args.verbose: print(f'-- Guidebook index (re)built: {len(entries)} entries')
 

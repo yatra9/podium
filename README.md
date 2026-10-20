@@ -132,6 +132,18 @@ relative URL; a deployment that does not carry it borrows the published copy
 from studiop5.org instead, which the panel decides by probing for a local one.
 The prose is deployed exactly as published, studiop5.org references included.
 
+Only `doc/Guidebook.ja.html`, the Japanese translation, is deployed: it is what
+this deployment's readers want, and carrying both would double the precache for
+a copy one tap away. The panel leads with whichever translation it finds and
+shows a language pill in its title bar; English falls back to the published
+copy, so that one needs the network. UI names and the keyword index are left in
+English, because that is what the app itself shows, and every `id` is shared
+between the two files, so `--guide` writes one index into both and
+cross-references work in either language. The translation carries a
+`TRANSLATED-FROM:` digest of the English prose (the generated index excluded);
+`--pages` reports a mismatch, deploys anyway, and prints the digest to paste in
+once the translation has caught up.
+
 `--doc` derives `build/doc-assets/` from `doc/assets/`, which is 42 MB of
 capture-resolution screenshots and screen recordings: images become WebP at
 1280px wide (13.5 MB → 2.5 MB) and clips become AV1 at 1280px wide (28.7 MB →

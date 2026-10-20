@@ -1270,28 +1270,73 @@ class GridPanel extends Panel {
 }
 
 class GuidePanel extends Panel {
-  // Where the guidebook lives depends on how Podium was deployed. The web app
-  // publishes it beside the page, where a relative URL keeps it same-origin.
-  // A static-host deployment does not carry it at all, and neither does the
-  // extension or a page saved to disk, so those have to borrow the published
-  // copy (which is served with "frame-ancestors *", so it will embed).
-  // The absence has to be found before the iframe is pointed at it: a 404 body
-  // fires the load event just as a guidebook would, and would be displayed.
-  static localUrl = new URL("Guidebook.html", location.href).href;
+  // Which guidebooks exist depends on how Podium was deployed. The web app
+  // publishes the English one beside the page, where a relative URL keeps it
+  // same-origin; a static-host deployment carries whichever translations were
+  // built into it; the extension and a page saved to disk carry none, and have
+  // to borrow the published copy (which is served with "frame-ancestors *", so
+  // it will embed). An absence has to be found before the iframe is pointed at
+  // it: a 404 body fires the load event just as a guidebook would, and would be
+  // displayed in its place.
+  // In preference order: a deployment that carries a translation leads with it,
+  // and English is what every deployment can always reach.
+  static localNames = { ja: "Guidebook.ja.html", en: "Guidebook.html" };
   static publishedUrl = `https://studiop5.org/Guidebook.html`;
   static isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
-  static guidebookUrl = null;
+  // Shown on the button that switches away from the language being read, so it
+  // names where the tap goes rather than where it already is.
+  static labels = { ja: "日本語", en: "EN" };
+  static preference = "podium-guide-language";
+  static urls = null;
 
-  static async resolveUrl() {
-    if (this.guidebookUrl) return this.guidebookUrl;
-    if (this.isExtension) return this.guidebookUrl = this.publishedUrl;
-    // A 404 is an answer and is remembered. A fetch that fails outright is not:
-    // being offline, or on file:// where fetching a sibling is forbidden, would
-    // otherwise pin the published copy for the rest of the session -- even on
-    // the site that publishes its own guidebook beside the page.
-    let found = await fetch(this.localUrl, { method: "HEAD" }).then(r => r.ok, () => null);
-    if (found === null) return this.publishedUrl;
-    return this.guidebookUrl = found ? this.localUrl : this.publishedUrl;
+  static css = css(
+    "GuidePanel",
+    `.GuidePanel__switcher {
+       position: absolute;
+       top: 0;
+       right: 3em;      /* the closer has the corner */
+       width: 3.4em;
+       /* The containing block is the panel, not the header (which is not
+          positioned), so the header's own 3em has to be repeated here -- as the
+          icon, title and closer all do. A percentage would take the height of
+          the whole panel and centre the label in the middle of the guidebook. */
+       height: 3em;     /* the full header, so the tap target is a finger wide */
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       color: var(--color-text);
+     }
+     .GuidePanel__switcher > span {
+       font-size: 0.7em;
+       font-weight: bold;
+       white-space: nowrap;
+       padding: 0.3em 0.5em;
+       border: 0.1em solid currentColor;
+       border-radius: 0.3em;
+       opacity: 0.7;
+     }
+     .GuidePanel__switcher:hover > span { opacity: 1; }
+  `
+  );
+
+  static async resolveUrls() {
+    // @return the real URL of each guidebook this deployment can show, keyed by
+    //   language. English always has one, falling back to the published copy.
+    if (this.urls) return this.urls;
+    if (this.isExtension) return this.urls = { en: this.publishedUrl };
+    let urls = {};
+    for (let [language, name] of Object.entries(this.localNames)) {
+      let url = new URL(name, location.href).href;
+      // A 404 is an answer and is remembered. A fetch that fails outright is
+      // not: being offline, or on file:// where fetching a sibling is
+      // forbidden, would otherwise pin the published copy for the rest of the
+      // session -- even on the site that publishes its own guidebook.
+      let found = await fetch(url, { method: "HEAD" }).then(r => r.ok, () => null);
+      if (found === null) return { en: this.publishedUrl };
+      if (found) urls[language] = url;
+    }
+    urls.en ??= this.publishedUrl;
+    return this.urls = urls;
   }
 
   content = helm(
@@ -1316,6 +1361,58 @@ class GuidePanel extends Panel {
     this.iframe = this.content.querySelector("iframe");
     this.msg = this.content.querySelector(".guide-msg");
     this.fetched = false;
+
+    // The title bar belongs to Podium, not to the iframe, so the language
+    // switch goes there: the guidebook keeps its whole panel, and the control
+    // is in the same place whichever document is loaded. It stays hidden until
+    // resolveUrls() finds a second language to switch to.
+    this.switcher = helm(`<div class="GuidePanel__switcher" style="display:none"><span></span></div>`);
+    this.switcherLabel = this.switcher.querySelector("span");
+    this.closer.before(this.switcher);
+    this.listeners.push(
+      // The header's own pointerdown drags the panel and double-tap-closes it,
+      // so this has to be taken first -- the same bargain the closer strikes.
+      listen(this.switcher, "pointerdown", (e) => {
+        e.stopPropagation();
+        e.taken = true;
+        this.setLanguage(this.other());
+      })
+    );
+  }
+
+  other() {
+    return Object.keys(this.urls ?? {}).find(language => language != this.language);
+  }
+
+  setLanguage(language) {
+    let url = this.urls?.[language];
+    if (!url) return;
+    this.language = language;
+    localStorage.setItem(GuidePanel.preference, language);
+    let other = this.other();
+    this.switcher.style.display = other ? "" : "none";
+    if (other) {
+      this.switcherLabel.textContent = GuidePanel.labels[other];
+      this.switcher.title = `Read the guidebook in ${other == "ja" ? "Japanese" : "English"}`;
+    }
+    if (this.iframe.src == url) return;
+    // Only the published copy needs the network, and only it can be defeated by
+    // being offline. The probe has already failed by then, so this is the one
+    // place that can say so.
+    if (url == GuidePanel.publishedUrl && !navigator.onLine) {
+      this.iframe.style.display = "none";
+      this.msg.style.display = "flex";
+      this.msg.textContent = "That guidebook is not available offline.";
+      return;
+    }
+    this.iframe.style.display = "none";
+    this.msg.style.display = "flex";
+    this.msg.textContent = "Fetching Guidebook...";
+    listen(this.iframe, "load", () => {
+      this.iframe.style.display = "block";
+      this.msg.style.display = "none";
+    }, { once: true });
+    this.iframe.src = url;
   }
 
   show() {
@@ -1329,20 +1426,15 @@ class GuidePanel extends Panel {
     if (this.fetched) return this;
     this.fetched = true;
     this.msg.textContent = "Fetching Guidebook...";
-    GuidePanel.resolveUrl().then((url) => {
-      // Only the published copy needs the network, and only it can be defeated
-      // by being offline. The probe above has already failed by then, so this
-      // is the one place that can say so.
-      if (url != GuidePanel.localUrl && !navigator.onLine) {
-        this.msg.textContent = "Guidebook is not available offline.";
-        this.fetched = false; // Try again when the panel is next opened.
-        return;
-      }
-      listen(this.iframe, "load", () => {
-        this.iframe.style.display = "block";
-        this.msg.style.display = "none";
-      }, { once: true });
-      this.iframe.src = url;
+    GuidePanel.resolveUrls().then((urls) => {
+      this.urls = urls;
+      // The reader's last choice wins; failing that, the first language this
+      // deployment has (see localNames, which is in preference order).
+      let language = localStorage.getItem(GuidePanel.preference);
+      if (!urls[language]) language = Object.keys(urls)[0];
+      this.setLanguage(language);
+      if (this.iframe.src) return;
+      this.fetched = false;   // nothing was loaded; try again when next opened
     });
     return this;
   }

@@ -100,25 +100,70 @@ test("the deployed guidebook is used in place of the published one", async ({ pa
 
   await page.goto("/pages/index.html");
   await expect.poll(() => page.evaluate(() => typeof window._panels_?.GuidePanel)).toBe("function");
-  expect(await page.evaluate(() => window._panels_.GuidePanel.resolveUrl()))
-    .toBe("http://127.0.0.1:9876/pages/Guidebook.html");
+  // Only the translation is deployed; English is the published copy, which the
+  // language switch reaches over the network.
+  expect(await page.evaluate(() => window._panels_.GuidePanel.resolveUrls()))
+    .toEqual({
+      ja: "http://127.0.0.1:9876/pages/Guidebook.ja.html",
+      en: "https://studiop5.org/Guidebook.html",
+    });
 
-  // And where the deployment does not carry it, the published copy. A 404 body
+  // And where the deployment carries none, the published copy alone. A 404 body
   // would otherwise load into the iframe exactly as a guidebook would, which is
   // why the probe exists at all.
   const borrowed = await page.evaluate(() => {
     const panel = window._panels_.GuidePanel;
-    panel.guidebookUrl = null;
-    panel.localUrl = new URL("no-such-guidebook.html", location.href).href;
-    return panel.resolveUrl();
+    panel.urls = null;
+    panel.localNames = { en: "no-such-guidebook.html" };
+    return panel.resolveUrls();
   });
-  expect(borrowed).toBe("https://studiop5.org/Guidebook.html");
+  expect(borrowed).toEqual({ en: "https://studiop5.org/Guidebook.html" });
 
   expect(offOrigin).toEqual([]);
 });
 
+test("the guidebook panel offers the language it cannot read offline", async ({ page }) => {
+  // The title bar is Podium's DOM, not the iframe's, which is the whole reason
+  // the switch can be there at all: it stays put while the document under it is
+  // replaced, and works the same for the published copy as for the local one.
+  await page.goto("/pages/index.html");
+  await expect.poll(() => page.evaluate(() => !!window._menu_?.rings?.app?.cells?.guide)).toBe(true);
+  // studiop5.org is never contacted: the English guidebook is only ever named.
+  await page.route("https://studiop5.org/**", route => route.abort());
+
+  const state = await page.evaluate(async () => {
+    const GuidePanel = window._panels_.GuidePanel;
+    localStorage.removeItem(GuidePanel.preference);
+    // The real cell, so the panel is the one App -> Guide opens, title bar and
+    // all -- a Panel cannot be built without one.
+    const panel = GuidePanel.get(window._menu_.rings.app.cells.guide);
+    panel.urls = await GuidePanel.resolveUrls();
+    const read = () => ({
+      language: panel.language,
+      switcher: panel.switcherLabel.textContent,
+      shown: panel.switcher.style.display != "none",
+      src: new URL(panel.iframe.src).pathname,
+      stored: localStorage.getItem(GuidePanel.preference),
+    });
+    panel.setLanguage("ja");
+    const opened = read();
+    panel.setLanguage(panel.other());
+    return { opened, switched: read() };
+  });
+
+  // The pill names where the tap goes, not where the reader already is.
+  expect(state.opened).toMatchObject({
+    language: "ja", switcher: "EN", shown: true,
+    src: "/pages/Guidebook.ja.html", stored: "ja",
+  });
+  expect(state.switched).toMatchObject({
+    language: "en", switcher: "日本語", shown: true,
+    src: "/Guidebook.html", stored: "en",
+  });
+});
+
 test("the deployed guidebook points at the images that were deployed with it", async () => {
-  const guidebook = fs.readFileSync(path.join(pagesDir, "Guidebook.html"), "utf8");
+  const guidebook = fs.readFileSync(path.join(pagesDir, "Guidebook.ja.html"), "utf8");
   // Every screenshot is recompressed to WebP, so a .jpg reference left behind
   // would 404. The videos keep both their codec container and their names.
   expect(guidebook).not.toMatch(/\.jpg/);
@@ -140,7 +185,7 @@ test("every deployed screenshot decodes, and so does a re-encoded clip", async (
   // cannot read, or a file ffmpeg wrote only half of, is caught. WebP and AV1
   // are both decoded here rather than merely declared.
   test.setTimeout(60_000);   // 62 images and a video, all decoded for real
-  await page.goto("/pages/Guidebook.html");
+  await page.goto("/pages/Guidebook.ja.html");
   const images = await page.evaluate(async () => {
     const all = [...document.images];
     // Undo the deferral the guidebook ships with: only the images near the top
@@ -181,7 +226,7 @@ test("the worker precaches the guidebook and its images, but no video", async ()
   const precached = listed.filter(url => url !== "./podium.html"); // absent by design
 
   expect(precached).toContain("./");
-  expect(precached).toContain("./Guidebook.html");
+  expect(precached).toContain("./Guidebook.ja.html");
   expect(precached.filter(url => url.endsWith(".webp"))).toHaveLength(62);
   // 11.5 MB of video against 2.5 MB for every image, and the guidebook already
   // defers them: they are fetched when played and not before.
@@ -231,7 +276,7 @@ test("installing the worker really stores the guidebook", async ({ page }) => {
 
   try {
     expect(stored.name).toMatch(/^podium-v2\.3\.0-[0-9a-f]{12}$/);
-    expect(stored.keys).toContain("/pages/Guidebook.html");
+    expect(stored.keys).toContain("/pages/Guidebook.ja.html");
     expect(stored.keys.filter(p => p.endsWith(".webp"))).toHaveLength(62);
     expect(stored.keys.filter(p => p.endsWith(".webm"))).toEqual([]);
   } finally {
