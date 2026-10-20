@@ -144,6 +144,25 @@ cross-references work in either language. The translation carries a
 `--pages` reports a mismatch, deploys anyway, and prints the digest to paste in
 once the translation has caught up.
 
+`deploy-pages.sh` publishes the directory to this repository's `gh-pages`
+branch:
+
+```bash
+mise exec -- python build.py --podium --pages
+bash deploy-pages.sh
+```
+
+It assembles the commit with git plumbing, so neither the working tree nor the
+current branch is touched — there is no `gh-pages` checkout, and the branch you
+are working on stays checked out. `gh-pages` holds only the deployment and has
+no relation to the source tree, which is why the commit is built by hand. The
+remote branch is the parent, a deployment identical to the one already served is
+a no-op, and the message records the source commit (marked `+dirty` when the
+build may not match it). GitHub Pages then builds it, which takes a few minutes
+and occasionally stalls; `gh api repos/<owner>/podium/pages/builds/latest --jq
+.status` reports it and `gh api -X POST repos/<owner>/podium/pages/builds` prods
+it.
+
 `--doc` derives `build/doc-assets/` from `doc/assets/`, which is 42 MB of
 capture-resolution screenshots and screen recordings: images become WebP at
 1280px wide (13.5 MB → 2.5 MB) and clips become AV1 at 1280px wide (28.7 MB →
