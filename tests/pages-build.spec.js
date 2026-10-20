@@ -1,3 +1,4 @@
+const crypto = require("node:crypto");
 const fs = require("node:fs");
 const path = require("node:path");
 const { test, expect } = require("@playwright/test");
@@ -68,4 +69,18 @@ test("the static-host build references everything relatively", async () => {
   const worker = fs.readFileSync(path.join(pagesDir, "sw.js"), "utf8");
   expect(worker).not.toMatch(/urlsToCache\s*=\s*\[[^\]]*['"]\//);
   expect(fs.existsSync(path.join(pagesDir, "podauth.html"))).toBe(true);
+});
+
+test("the service worker's cache name follows the page it serves", async () => {
+  // A deployment whose sw.js is byte-identical to the last one goes unnoticed:
+  // the browser sees no new worker, never reinstalls, and keeps answering from
+  // the old cache. The digest is what makes a changed page a changed worker.
+  const digest = crypto.createHash("sha256")
+    .update(fs.readFileSync(pageFile)).digest("hex").slice(0, 12);
+  const worker = fs.readFileSync(path.join(pagesDir, "sw.js"), "utf8");
+
+  expect(worker).toContain(`const CACHE_NAME = 'podium-v2.3.0-${digest}';`);
+  // The source must stay unstamped, or the build would have nothing to replace.
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "sw.js"), "utf8");
+  expect(source).toContain("const CACHE_NAME = 'podium-v2.3.0';");
 });

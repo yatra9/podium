@@ -2,6 +2,7 @@
 import argparse
 import base64
 import gzip
+import hashlib
 import shutil
 import zlib
 from io import StringIO
@@ -665,8 +666,24 @@ if args.pages:
     # The entry is index.html, so the URL is just the directory, which is what
     # the manifest's "./" start_url and scope resolve to.
     build_podium_page(os.path.join(pages_dir, 'index.html'), canonical=None)
-    for name in ('manifest.webmanifest', 'sw.js', 'podauth.html'):
+    for name in ('manifest.webmanifest', 'podauth.html'):
         shutil.copyfile(os.path.join('src', name), os.path.join(pages_dir, name))
+    # The service worker serves the page from its cache, so a deployment whose
+    # sw.js is byte-identical to the last one would go unnoticed: the browser
+    # sees no new worker, never reinstalls, and keeps answering from the old
+    # cache. Stamp the cache name with the page's own digest, so a changed page
+    # changes the worker, which reinstalls and (see its activate handler) drops
+    # every cache that is not the current one.
+    with open(os.path.join(pages_dir, 'index.html'), 'rb') as f:
+        page_digest = hashlib.sha256(f.read()).hexdigest()[:12]
+    with open(os.path.join('src', 'sw.js'), encoding='utf-8') as f:
+        worker = f.read()
+    stamp = "const CACHE_NAME = 'podium-v2.3.0';"
+    if worker.count(stamp) != 1:
+        sys.exit(f'Error: cache name not found exactly once in src/sw.js: {stamp!r}')
+    worker = worker.replace(stamp, f"const CACHE_NAME = 'podium-v2.3.0-{page_digest}';")
+    with open(os.path.join(pages_dir, 'sw.js'), 'w', encoding='utf-8', newline='\n') as f:
+        f.write(worker)
     # The manifest names the icons as siblings, so that is where they must go.
     missing_icons = []
     for size in (192, 512):
