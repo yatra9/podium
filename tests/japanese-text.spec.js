@@ -112,7 +112,7 @@ test("a custom font is kept unless the fallback is strictly better", async ({ pa
   expect(resolved.better).toEqual({ font: "Noto Sans JP", missing: 0 });
 });
 
-test("kana, JIS level 1 kanji, Greek and Cyrillic are all covered", async ({ page }) => {
+test("kana, JIS kanji of both levels, Greek and Cyrillic are all covered", async ({ page }) => {
   const covered = await page.evaluate(() => {
     const show = text => [...text].every(c => window._fontCanShow_("Noto Sans JP", c.codePointAt(0)));
     return {
@@ -120,6 +120,9 @@ test("kana, JIS level 1 kanji, Greek and Cyrillic are all covered", async ({ pag
       katakana: show("アイウエオヴー"),
       punctuation: show("、。「」・〜％？！…"),
       level1Kanji: show("日本語楽譜演奏速度強弱記号"),
+      // Level 2 is where the characters of personal and place names live, and
+      // the text written on a score is often somebody's name.
+      level2Kanji: show("齟齬薔薇彌凛"),
       greek: show("αβγΩ"),
       cyrillic: show("абвЯ"),
       fullwidth: show("ＡＢｚ１２３"),
@@ -128,30 +131,30 @@ test("kana, JIS level 1 kanji, Greek and Cyrillic are all covered", async ({ pag
 
   expect(covered).toEqual({
     hiragana: true, katakana: true, punctuation: true, level1Kanji: true,
-    greek: true, cyrillic: true, fullwidth: true,
+    level2Kanji: true, greek: true, cyrillic: true, fullwidth: true,
   });
 });
 
 test("a character outside the subset is reported rather than dropped", async ({ page }) => {
-  // 齟 and 齬 are JIS level 2, deliberately left out of the subset: including
-  // the level would roughly double the download. ゔ is outside JIS X 0208
-  // altogether, and U+20BB7 is outside the BMP. What matters is that they are
-  // named, because a custom font does not throw -- it substitutes glyph 0, and
-  // the text would just go missing.
+  // Both levels of JIS X 0208 are in the subset, but JIS X 0208 is not all of
+  // Japanese: ゔ is outside it altogether, and U+20BB7 is outside the BMP. What
+  // matters is that they are named, because a custom font does not throw -- it
+  // substitutes glyph 0, and the text would just go missing.
   const resolved = await page.evaluate(() => {
     const out = window._resolveTextFont_("齟齬のないゔ\u{20BB7}", "Times-Roman");
     return { ...out, missing: out.missing.map(cp => String.fromCodePoint(cp)) };
   });
 
   expect(resolved.pdfFontName).toBe("Noto Sans JP");
-  // The level 1 characters of the same string must not be reported.
-  expect(resolved.missing).toEqual(["齟", "齬", "ゔ", "\u{20BB7}"]);
+  // The characters of the same string that the subset does have, 齟齬 among
+  // them, must not be reported.
+  expect(resolved.missing).toEqual(["ゔ", "\u{20BB7}"]);
 });
 
 test("the Japanese font is embedded as a subset, not whole", async ({ page }) => {
   // Without subset: true the font's every glyph lands in every saved score. The
-  // Japanese subset is 674 KB, so this is the difference between a save of a
-  // few kilobytes and one of most of a megabyte.
+  // Japanese subset is 1.4 MB, so this is the difference between a save of a
+  // few kilobytes and one of well over a megabyte.
   const sizes = await page.evaluate(async () => {
     const out = {};
     for (const subset of [false, true]) {
