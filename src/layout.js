@@ -1340,6 +1340,12 @@ class BookLayout extends Layout {
     }
     // mount the given pg (1-based page number) on the given
     // slot (an index into this.slots)
+    // A blocking mount is one this layout is waiting to show (see pgGoTo, which
+    // mounts the two pages it is turning to that way, and the pages behind them
+    // nonblocking): tell the pg, so its pdf can rasterise without queueing
+    // behind pages nobody is looking at yet (see Score.renderGate).
+    let known = this.score.pgs[pn - 1];
+    if (known) known.showing = !nonblocking;
     let pg = await this.whileAlive(this.score.pgUse(pn, nonblocking));
     if (pg) {
       pg.setZoom(this.cell.geo.zoom);
@@ -2097,8 +2103,24 @@ class ScrollLayout extends Layout {
       }
     }
 
+    // pn is about to sit at the leading edge of the scroll, so [pn, pn+pgShow-1]
+    // is what the reader is waiting to see. How far outside that a page is.
+    let last = pn + pgShow - 1;
+    let out = (sashPn) => Math.max(pn - sashPn, sashPn - last, 0);
+
     pgShow = Math.max(pgShow, 4); // ensure at least 4
-    for (let sashPn = pn - pgShow; sashPn <= pn + pgShow + 1; sashPn++) {
+    // Mount the pages on screen first and then outwards. Rasterising a cold page
+    // costs the cpu hundreds of milliseconds, and the whole window of them goes
+    // at once, so the order pages reach Score.renderGate decides how long the
+    // reader waits for the only pages they can see.
+    let order = [];
+    for (let sashPn = pn - pgShow; sashPn <= pn + pgShow + 1; sashPn++) order.push(sashPn);
+    order.sort((a, b) => out(a) - out(b));
+
+    for (let sashPn of order) {
+      let known = this.score.pgs[sashPn - 1];
+      if (known) known.showing = out(sashPn) == 0; // before pgUse: its inflation
+        // may start the render straight away
       let pg = await this.whileAlive(this.score.pgUse(sashPn));
       if (!pg || pg.elm.isConnected) continue; // possibly no page at i, or page already mounted
       pg.setZoom(this.cell.geo.zoom);
@@ -2540,6 +2562,8 @@ class TableLayout extends Layout {
       this.active.replaceWith(inactive);
     }
     // Now build the new active pg:
+    let known = this.score.pgs[pn - 1];
+    if (known) known.showing = true; // the one page this layout shows full size
     let pg = elm.pg = await this.whileAlive(this.score.pgUse(pn, false));
     // A null elm means this foreground inflate was aborted — i.e. a newer build
     // superseded this one (rapid layout switching). Bail the stale build; the

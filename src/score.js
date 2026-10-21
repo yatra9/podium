@@ -194,6 +194,8 @@ class Pg {
     this.inflateCtrl = null;
     this.renderPromise = null; // see renderIfNeeded()
     this.inUse = false; // marker for class Score's caching algorithm
+    this.showing = false; // true iff a layout says this pg is on screen now, and
+      // so may rasterise without waiting its turn: see Score.renderGate()
     this.score = score;
     this.height = height;
     this.json = json;
@@ -220,6 +222,20 @@ class Pg {
     // dom canvas, sigh.
     if(this.score.disposed) throw new DOMException("Score disposed", "AbortError");
     if(!this.score.mozDoc) return;
+    // Wait for the cpu if this page is not one a layout is showing: see
+    // Score.renderGate, which is what keeps a jump from rasterising its whole
+    // window of pages on top of the page the reader is waiting for.
+    let release = await this.score.renderGate(this);
+    if(!release) throw new DOMException("Render cancelled", "AbortError");
+    try {
+      await this.renderPdfAux(canvas, signal);
+    } finally {
+      release();
+    }
+  }
+
+  async renderPdfAux(canvas, signal) {
+    // renderPdf's body, run once Score.renderGate has given it the cpu.
     let mozPg = await this.score.mozDoc.getPage(this.mozPn);
     if(this.score.disposed || signal?.aborted)
       throw new DOMException("Inflation aborted", "AbortError");
@@ -526,6 +542,10 @@ class Pg {
       this.inflateCtrl.abort();
       this.inflateCtrl = null;
     }
+    // A render of this pg may be parked in the render gate waiting for the cpu.
+    // Nothing will ever abort it there, and there is no canvas left for it to
+    // draw on, so send it away (see Score.renderGate).
+    this.score.renderUngate(this);
     this.inflatePromise = null ;
     this.renderTask?.cancel();
     if (this.deferred) {
@@ -1693,10 +1713,75 @@ class Score {
     return pg;
   }
 
+  // Rasterising one pdf page costs hundreds of milliseconds and a canvas of
+  // several megapixels, and a layout mounts about ten pages around the one being
+  // read. Left to themselves all ten rasterise at once, so the page the reader is
+  // waiting for finishes no sooner than the rest: measured on an 82 page score
+  // whose pages cost 0.5s each, a jump landed in 7s, and in 0.5s with the other
+  // nine held back. So the pages a layout says it is showing (Pg.showing) render
+  // as they please, and every other page waits for those and then goes one at a
+  // time. Thumbnails and toPdf take their turn in that same queue.
+  showRenders = 0; // renders in flight for pages a layout is showing
+  bgRenders = 0; // renders in flight for pages that are merely mounted
+  bgWaiting = []; // {pg, go} of renders parked until it is their turn
+
+  async renderGate(pg) {
+    // Hold a render until it is this @pg's turn to have the cpu.
+    // @return a function to call when the render is done, or null if the pg was
+    //   deflated while it waited, in which case the render must not happen.
+    if (this.disposed) return null;
+    let release = (counter) => {
+      let spent = false;
+      return () => {
+        if (spent) return; // a render releases once, however it ended
+        spent = true;
+        --this[counter];
+        this.renderNext();
+      };
+    };
+    if (pg.showing) {
+      ++this.showRenders;
+      return release("showRenders");
+    }
+    if (this.showRenders || this.bgRenders) {
+      let waiter = { pg };
+      let go = await new Promise((resolve) => {
+        waiter.go = resolve;
+        this.bgWaiting.push(waiter);
+      });
+      if (!go) return null;
+    }
+    ++this.bgRenders;
+    return release("bgRenders");
+  }
+
+  renderNext() {
+    // Let the waiting page nearest the one being read go next. Nearest, because a
+    // jump mounts a whole window of pages at once, and the reader may well have
+    // moved somewhere else again before that queue drains.
+    if (this.showRenders || this.bgRenders || !this.bgWaiting.length) return;
+    let pn = this.numbers?.pn || 1;
+    let dist = (w) => Math.abs(this.pnOf(w.pg) - pn);
+    let near = this.bgWaiting.reduce((best, w) => (dist(w) < dist(best) ? w : best));
+    this.bgWaiting.splice(this.bgWaiting.indexOf(near), 1);
+    near.go(true);
+  }
+
+  renderUngate(pg = null) {
+    // Wake the renders parked for @pg (or all of them) and tell them not to
+    // happen: their pg has been deflated, so there is nothing left to draw on.
+    this.bgWaiting = this.bgWaiting.filter((w) => {
+      if (pg && w.pg !== pg) return true;
+      w.go(false);
+      return false;
+    });
+  }
+
   pgUnuse(pg) {
     // "unuse" the given @pg, making it a candidate for deflation
     if (!pg.inUse) return;
     pg.inUse = false;
+    pg.showing = false; // nobody is looking at it, so it has no claim on the cpu
 
     // We don't immediately deflate an unused pg: instead, deflate least recently
     // used unused pg's, allowing at most Score.MAX_INFLATED inflated but unused pg's.
