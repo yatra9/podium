@@ -1634,7 +1634,7 @@ class LayoutPanel extends Panel {
       if (tag == "fit" && _score_ && this.cell == Layout.activeLayout?.cell)
         return void Layout.activeLayout.refit();
       if (tag == "fit") this.cell.stash.pz = null; // reset pz-set marker so layout will use fit setting
-      if (tag == "pnShow") this.syncPnPlace();
+      if (tag == "band") this.syncPn();
       if (tag == "pace") return; // no rebuild required
       if (_score_ && this.cell == Layout.activeLayout.cell) {
         if(tag == "pgSnap") // no rebuild, but must update
@@ -1700,14 +1700,34 @@ class LayoutPanel extends Panel {
     // the reader's choice: a band is 45px of a dimension the fit may be
     // fighting for, and the page with the room to spare is not always the same.
     let pnAxisGroupDef = {
-      Off:   { svg: "Close",       radio: "pnShow" },
-      "L-R": { svg: "Numbers L-R", radio: "pnShow" },
-      "T-B": { svg: "Numbers T-B", radio: "pnShow" },
+      Off:   { svg: "Close",       radio: "band" },
+      "L-R": { svg: "Numbers L-R", radio: "band" },
+      "T-B": { svg: "Numbers T-B", radio: "band" },
     };
 
     let pnPlaceGroupDef = {
-      Inset: { svg: "Numbers Inset", radio: "pnPlace" },
-      Over:  { svg: "Numbers Over",  radio: "pnPlace" },
+      Inset: { svg: "Numbers Inset", radio: "place" },
+      Over:  { svg: "Numbers Over",  radio: "place" },
+    };
+
+    // A ButtonGroup reads and writes one named property of the object it is
+    // given, and these two rows are three answers and two answers to what the
+    // stash keeps as pnShow plus one pnBand key (see Layout.normalizePn for why
+    // it is one key). So they are given a view of the stash rather than the
+    // stash itself: Off is the old pnShow, and the edges and the placing are
+    // the band's.
+    let bandView = (cell) => {
+      let stash = Layout.normalizePn(cell);
+      return {
+        get band() { return stash.pnShow == "Off" ? "Off" : stash.pnBand.axis; },
+        set band(tag) {
+          if (tag == "Off") return void (stash.pnShow = "Off");
+          stash.pnShow = "On";
+          stash.pnBand.axis = tag;
+        },
+        get place() { return stash.pnBand.place; },
+        set place(tag) { stash.pnBand.place = tag; },
+      };
     };
 
     // ButtonGroup writes to the defs it is given (it marks buttons disabled),
@@ -1715,13 +1735,17 @@ class LayoutPanel extends Panel {
     let copyDef = (def) =>
       Object.fromEntries(Object.entries(def).map(([tag, d]) => [tag, { ...d }]));
 
-    // The place row answers a question that does not arise with the numbers off.
+    // Both rows are redrawn from the stash, which may have arrived from a score
+    // file and been settled by normalizePn since they were last drawn; and the
+    // place row answers a question that does not arise with the numbers off.
+    this.pnBandGroups = {};
     this.pnPlaceGroups = {};
-    this.syncPnPlace = () => {
+    this.syncPn = () => {
       for (let [key, group] of Object.entries(this.pnPlaceGroups)) {
-        let off = _menu_.rings.layout.cells[key].stash.pnShow == "Off";
+        let off = Layout.normalizePn(_menu_.rings.layout.cells[key]).pnShow == "Off";
         for (let d of Object.values(group.defs)) d.disabled = off;
         group.refresh();
+        this.pnBandGroups[key].refresh();
       }
     };
 
@@ -1741,8 +1765,10 @@ class LayoutPanel extends Panel {
     tags.bookSliders.replaceWith(
       new SliderGroup(stash, bookSlidersGroupDef, handler).elm,
     );
-    tags.pnBook.replaceWith(new ButtonGroup(stash, copyDef(pnAxisGroupDef), handler).elm);
-    this.pnPlaceGroups.book = new ButtonGroup(stash, copyDef(pnPlaceGroupDef), handler);
+    let view = bandView(_menu_.rings.layout.cells.book);
+    this.pnBandGroups.book = new ButtonGroup(view, copyDef(pnAxisGroupDef), handler);
+    tags.pnBook.replaceWith(this.pnBandGroups.book.elm);
+    this.pnPlaceGroups.book = new ButtonGroup(view, copyDef(pnPlaceGroupDef), handler);
     tags.pnBookPlace.replaceWith(this.pnPlaceGroups.book.elm);
 
     // build horizontal face
@@ -1753,10 +1779,10 @@ class LayoutPanel extends Panel {
     tags.fitHorizontalSliders.replaceWith(
       new SliderGroup(stash, horzSlidersGroupDef, handler).elm,
     );
-    tags.pnHorizontal.replaceWith(
-      new ButtonGroup(stash, copyDef(pnAxisGroupDef), handler).elm
-    );
-    this.pnPlaceGroups.horizontal = new ButtonGroup(stash, copyDef(pnPlaceGroupDef), handler);
+    view = bandView(_menu_.rings.layout.cells.horizontal);
+    this.pnBandGroups.horizontal = new ButtonGroup(view, copyDef(pnAxisGroupDef), handler);
+    tags.pnHorizontal.replaceWith(this.pnBandGroups.horizontal.elm);
+    this.pnPlaceGroups.horizontal = new ButtonGroup(view, copyDef(pnPlaceGroupDef), handler);
     tags.pnHorizontalPlace.replaceWith(this.pnPlaceGroups.horizontal.elm);
 
     // build vertical face
@@ -1767,10 +1793,10 @@ class LayoutPanel extends Panel {
     tags.fitVerticalSliders.replaceWith(
       new SliderGroup(stash, vertSlidersGroupDef, handler).elm
     );
-    tags.pnVertical.replaceWith(
-      new ButtonGroup(stash, copyDef(pnAxisGroupDef), handler).elm
-    );
-    this.pnPlaceGroups.vertical = new ButtonGroup(stash, copyDef(pnPlaceGroupDef), handler);
+    view = bandView(_menu_.rings.layout.cells.vertical);
+    this.pnBandGroups.vertical = new ButtonGroup(view, copyDef(pnAxisGroupDef), handler);
+    tags.pnVertical.replaceWith(this.pnBandGroups.vertical.elm);
+    this.pnPlaceGroups.vertical = new ButtonGroup(view, copyDef(pnPlaceGroupDef), handler);
     tags.pnVerticalPlace.replaceWith(this.pnPlaceGroups.vertical.elm);
 
     // build table face
@@ -1781,12 +1807,12 @@ class LayoutPanel extends Panel {
       new SliderGroup(stash, tableSlidersGroupDef, handler).elm
     );
     tags.pnTable.replaceWith(new ButtonGroup(stash, copyDef(pnGroupDef), handler).elm);
-    this.syncPnPlace();
+    this.syncPn();
   }
 
   show() {
     super.show();
-    this.syncPnPlace();
+    this.syncPn();
     Object.values(this.faces).forEach((face) => face.remove());
     this.content.append(this.faces[this.cell.key]);
     return this;

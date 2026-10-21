@@ -29,12 +29,16 @@ test.beforeEach(async ({ page }) => {
 });
 
 // Open @key with the given Numbers settings and report the page size the fit
-// arrived at, plus where the two bands ended up.
-async function build(page, key, pnShow, pnPlace = "Inset") {
-  return page.evaluate(async ([key, pnShow, pnPlace]) => {
+// arrived at, plus where the two bands ended up. @axis is "Off", "L-R" or
+// "T-B"; "Off" leaves the band key out altogether, as a score saved by a
+// Podium that never had one does, so the default edges are exercised too.
+async function build(page, key, axis, place = "Inset") {
+  return page.evaluate(async ([key, axis, place]) => {
     const Layout = window._Layout_;
     const cell = window._menu_.rings.layout.cells[key];
-    Object.assign(cell.stash, { pnShow, pnPlace, pz: null });
+    Object.assign(cell.stash, { pnShow: axis == "Off" ? "Off" : "On", pz: null });
+    if (axis == "Off") delete cell.stash.pnBand;
+    else cell.stash.pnBand = { axis, place };
     await Layout.open(cell);
     await new Promise(done => setTimeout(done, _gs_ * 3));
     const layout = Layout.activeLayout, g = cell.geo;
@@ -52,7 +56,7 @@ async function build(page, key, pnShow, pnPlace = "Inset") {
       };
     };
     return { pg, first: band(layout.pagerLeft), last: band(layout.pagerRight) };
-  }, [key, pnShow, pnPlace]);
+  }, [key, axis, place]);
 }
 
 for (const key of LAYOUTS) {
@@ -101,13 +105,32 @@ for (const key of LAYOUTS) {
   });
 
   test(`${key} reads a score saved before the edges could be chosen`, async ({ page }) => {
-    // Layout settings travel inside the score file, so "On" keeps turning up:
-    // it meant the edges that layout used at the time, which is where a reader
-    // who saved that score expects to find the numbers.
-    const on = await build(page, key, "On");
+    // Layout settings travel inside the score file, and Numbers has always been
+    // On or Off, so scores with no band key at all keep turning up -- including
+    // from a Podium that has never heard of one. They open on the edges that
+    // layout used at the time, which is where whoever saved them expects to
+    // find the numbers.
+    const on = await page.evaluate(async (key) => {
+      const Layout = window._Layout_;
+      const cell = window._menu_.rings.layout.cells[key];
+      Object.assign(cell.stash, { pnShow: "On", pz: null });
+      delete cell.stash.pnBand;
+      await Layout.open(cell);
+      await new Promise(done => setTimeout(done, _gs_ * 3));
+      const layout = Layout.activeLayout;
+      const band = (pager) => {
+        const box = pager.elm.getBoundingClientRect();
+        return { at: pager.position, thick: Math.round(Math.min(box.width, box.height)) };
+      };
+      return { first: band(layout.pagerLeft), last: band(layout.pagerRight),
+               settled: JSON.parse(JSON.stringify(cell.stash.pnBand)) };
+    }, key);
     const legacy = key == "vertical" ? ["top", "bottom"] : ["left", "right"];
     expect([on.first.at, on.last.at], key).toEqual(legacy);
     expect([on.first.thick, on.last.thick], key).toEqual([45, 45]);
+    // And the stash is settled on the way through, so the panel has something
+    // to show and the next save carries it.
+    expect(on.settled, key).toEqual({ axis: key == "vertical" ? "T-B" : "L-R", place: "Inset" });
   });
 }
 
@@ -124,7 +147,7 @@ for (const axis of ["L-R", "T-B"]) {
     const band = await page.evaluate(async (axis) => {
       const Layout = window._Layout_;
       const cell = window._menu_.rings.layout.cells.book;
-      Object.assign(cell.stash, { pnShow: axis, pnPlace: "Over", pz: null });
+      Object.assign(cell.stash, { pnShow: "On", pnBand: { axis, place: "Over" }, pz: null });
       await Layout.open(cell);
       await new Promise(done => setTimeout(done, _gs_ * 3));
       await Layout.activeLayout.pgGoTo(1);
@@ -177,13 +200,44 @@ test("the place row is dead while the numbers are off", async ({ page }) => {
     const panel = window._panels_.BookPanel.get(cell);
     const read = (pnShow) => {
       cell.stash.pnShow = pnShow;
-      panel.syncPnPlace();
+      panel.syncPn();
       return Object.values(panel.pnPlaceGroups.book.elms)
         .map(elm => elm.classList.contains("ButtonGroup__button-disabled"));
     };
-    return { off: read("Off"), sides: read("L-R") };
+    return { off: read("Off"), on: read("On") };
   });
 
   expect(state.off).toEqual([true, true]);
-  expect(state.sides).toEqual([false, false]);
+  expect(state.on).toEqual([false, false]);
+});
+
+test("the panel shows the edges a score arrived with", async ({ page }) => {
+  // The rows are two views of one stash key, so a stash the panel has not seen
+  // written -- out of a score file, say -- has to leave a button lit in each
+  // row. It once left the whole row blank, there being no button to match the
+  // value the stash held.
+  const lit = await page.evaluate(async () => {
+    const cell = window._menu_.rings.layout.cells.vertical;
+    const panel = window._panels_.VerticalPanel.get(cell);
+    const active = (group) => Object.entries(group.elms)
+      .filter(([, elm]) => elm.classList.contains("ButtonGroup__button-active"))
+      .map(([tag]) => tag);
+    const read = (stash) => {
+      Object.assign(cell.stash, stash);
+      panel.syncPn();
+      return { band: active(panel.pnBandGroups.vertical), place: active(panel.pnPlaceGroups.vertical) };
+    };
+    const legacy = (() => { delete cell.stash.pnBand; return read({ pnShow: "On" }); })();
+    return {
+      legacy,
+      chosen: read({ pnShow: "On", pnBand: { axis: "L-R", place: "Over" } }),
+      off: read({ pnShow: "Off" }),
+    };
+  });
+
+  // Vertical's numbers have always run across the ends, so that is what a score
+  // with no band key of its own means.
+  expect(lit.legacy).toEqual({ band: ["T-B"], place: ["Inset"] });
+  expect(lit.chosen).toEqual({ band: ["L-R"], place: ["Over"] });
+  expect(lit.off.band).toEqual(["Off"]);
 });
