@@ -23,7 +23,7 @@ const LAYOUTS = ["book", "horizontal", "vertical"];
 test.beforeEach(async ({ page }) => {
   await page.goto("/podium.html");
   await page.waitForFunction(() => !!window._menu_?.rings?.layout?.cells?.vertical);
-  await page.evaluate(() => { window._menu_.rings.score.cells.new.stash.pgCount = 4; });
+  await page.evaluate(() => { window._menu_.rings.score.cells.new.stash.pages = 4; });
   await page.evaluate(() => window._menu_.notify("score/new/up"));
   await expect.poll(() => page.evaluate(() => !!window._score_), { timeout: 30_000 }).toBe(true);
 });
@@ -140,7 +140,7 @@ for (const axis of ["L-R", "T-B"]) {
     // them: a finger on a band turned the page it was lying on instead of
     // scrubbing to the page it was pointing at. The scrolls never showed it --
     // their bands have always been given a z-index of their own.
-    await page.evaluate(() => { window._menu_.rings.score.cells.new.stash.pgCount = 8; });
+    await page.evaluate(() => { window._menu_.rings.score.cells.new.stash.pages = 8; });
     await page.evaluate(() => window._menu_.notify("score/new/up"));
     await expect.poll(() => page.evaluate(() => !!window._score_), { timeout: 30_000 }).toBe(true);
 
