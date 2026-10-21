@@ -1,5 +1,11 @@
 # Podium
 
+> This is a fork of [studiop5/podium](https://github.com/studiop5/podium), branched
+> at v2.3.0, for use as a music stand on an Android tablet. What it adds and why —
+> pCloud outside the browser extension, a static-host PWA deployment, Japanese text
+> and guidebook, movable page-number bands, bookmark targeting, faster page
+> jumps — is in [FORK-ja.md](FORK-ja.md) (Japanese).
+
 **Podium is:**
 - An e-reader for music scores.
 - 100% browser-based, 100% open source, 100% free.
