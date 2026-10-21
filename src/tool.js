@@ -24,7 +24,8 @@ import { ButtonGroup, clamp, clearChildren, css, dataIndex, delay, delayMs, dial
 import { pianoSamples } from "./sample.js";
 import { panels, ScreenPanel } from "./panel.js";
 import { Yin } from "./yin.js";
-export { Review, Metronome, Clock, Stopwatch, Piano, Volume };
+import { WinkHud, WinkTurner } from "./wink.js";
+export { Review, Metronome, Clock, Stopwatch, Piano, Volume, Wink };
 
 // -skip
 
@@ -2452,3 +2453,570 @@ class Review {
 }
 
 
+/**
+class Wink
+
+  The Wink panel: where the camera gets aimed and the gesture gets measured.
+
+  Everything a wink is read from is a guess until it has been measured on a
+  player with an instrument at their lips, and the awkward part is that nobody
+  can see what the model sees. So this panel shows it: the camera as a mirror,
+  the two eye scores against the thresholds they are tested against, the last
+  few seconds as a trace, and -- the thing a player actually needs -- a lamp
+  that says whether a wink made right now would be read at all, and when it
+  would not, which of the reasons it is.
+
+  The camera itself belongs to WinkTurner, not to this panel, because the point
+  of the feature is to close the panel and go and play with the ring in the
+  corner still watching. Closing this puts nothing out.
+**/
+class Wink {
+
+  static css = css(
+    "Wink",
+    `
+    .Wink {
+      width: 26em;
+      height: 31em;
+      padding: .3em;
+      text-align: center;
+    }
+    /* The two controls that matter most sit above everything else, so they
+       are reachable without scrolling however small the screen is. */
+    .Wink__controls {
+      display: flex;
+      justify-content: space-around;
+      align-items: flex-start;
+    }
+    .Wink__face {
+      padding: 0 .4em .4em .4em;
+    }
+    .Wink__scroll {
+      overflow-y: auto;
+      scrollbar-width: none;
+    }
+    .Wink__scroll::-webkit-scrollbar { display: none; }
+    .Wink__preview {
+      width: 100%;
+      /* Big enough to see where your face is in the frame, no bigger: this is
+         for aiming a camera, not for watching yourself play. */
+      height: 9.5em;
+      border-radius: var(--borderRadius);
+      background: #000;
+      object-fit: cover;
+      /* A mirror: a camera aimed by watching an un-mirrored picture of
+         yourself is aimed the wrong way every time. */
+      transform: scaleX(-1);
+    }
+    .Wink__lamp {
+      display: flex;
+      align-items: center;
+      gap: .5em;
+      margin: .45em .1em;
+      text-align: left;
+    }
+    .Wink__lamp__dot {
+      flex: none;
+      width: .85em;
+      height: .85em;
+      border-radius: 50%;
+      background: #8c8c8c;
+      box-shadow: 0 0 .4em rgba(0, 0, 0, .35) inset;
+      transition: background ${_gsgs_}ms;
+    }
+    .Wink__lamp-held .Wink__lamp__dot { background: #d79a2b; }
+    .Wink__lamp-ready .Wink__lamp__dot { background: #46bb63; }
+    .Wink__lamp__text { font-size: .8em; }
+    .Wink__eye {
+      display: flex;
+      align-items: center;
+      gap: .45em;
+      font-size: .75em;
+      margin: .2em .1em;
+    }
+    .Wink__eye__name { flex: none; width: 5.4em; text-align: right; }
+    .Wink__eye__bar {
+      position: relative;
+      flex: 1;
+      height: 1em;
+      border-radius: .5em;
+      background: rgba(128, 128, 128, .25);
+      overflow: hidden;
+    }
+    .Wink__eye__fill {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 0;
+    }
+    .Wink__eye-left .Wink__eye__fill { background: #e08a3c; }
+    .Wink__eye-right .Wink__eye__fill { background: #49a9f0; }
+    /* Where "shut" and "open" are set, so a score can be read against them. */
+    .Wink__eye__tick {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      width: 2px;
+      background: currentColor;
+      opacity: .5;
+    }
+    .Wink__eye__score { flex: none; width: 2.4em; text-align: right; }
+    .Wink__trace {
+      width: 100%;
+      height: 3.8em;
+      margin-top: .3em;
+      border-radius: var(--borderRadius);
+      background: rgba(128, 128, 128, .16);
+    }
+    .Wink__read {
+      font-size: .7em;
+      opacity: .8;
+      margin: .25em 0;
+    }
+    .Wink__note {
+      font-size: .72em;
+      opacity: .8;
+      text-align: left;
+      padding: .4em .2em;
+      line-height: 1.35;
+    }
+    .Wink__count {
+      font-size: .8em;
+      margin: .3em 0;
+    }
+   `
+  );
+
+  elm = helm(`<div class="Wink"></div>`);
+
+  // Aiming the camera: what it sees, what it makes of it, and whether a wink
+  // would count right now.
+  aimFace = helm(`
+    <div class="Wink__face Wink__scroll">
+      <div class="Wink__controls">
+        <div data-tag="watchGroupElm"></div>
+        <div data-tag="turnGroupElm"></div>
+      </div>
+      <video data-tag="preview" class="Wink__preview" autoplay playsinline muted></video>
+      <div data-tag="lamp" class="Wink__lamp">
+        <div class="Wink__lamp__dot"></div>
+        <div data-tag="lampText" class="Wink__lamp__text">Wink is off.</div>
+      </div>
+      <div class="Wink__eye Wink__eye-left">
+        <div class="Wink__eye__name">Left eye</div>
+        <div class="Wink__eye__bar">
+          <div data-tag="leftFill" class="Wink__eye__fill"></div>
+          <div data-tag="leftShut" class="Wink__eye__tick"></div>
+          <div data-tag="leftOpen" class="Wink__eye__tick"></div>
+        </div>
+        <div data-tag="leftScore" class="Wink__eye__score" translate="no">--</div>
+      </div>
+      <div class="Wink__eye Wink__eye-right">
+        <div class="Wink__eye__name">Right eye</div>
+        <div class="Wink__eye__bar">
+          <div data-tag="rightFill" class="Wink__eye__fill"></div>
+          <div data-tag="rightShut" class="Wink__eye__tick"></div>
+          <div data-tag="rightOpen" class="Wink__eye__tick"></div>
+        </div>
+        <div data-tag="rightScore" class="Wink__eye__score" translate="no">--</div>
+      </div>
+      <canvas data-tag="trace" class="Wink__trace" width="480" height="140"></canvas>
+      <div data-tag="read" class="Wink__read" translate="no">&nbsp;</div>
+    </div>`);
+
+  // The numbers the gesture is measured against.
+  limitsFace = helm(`
+    <div class="Wink__face Wink__scroll">
+      <div data-tag="sidesGroupElm"></div>
+      <div data-tag="backGroupElm"></div>
+      <div data-tag="limitsGroupElm"></div>
+      <div class="Wink__note">The ring in the corner goes:</div>
+      <div data-tag="placeGroupElm"></div>
+      <div data-tag="cameraGroupElm"></div>
+      <div class="Wink__note" data-tag="cameraName" translate="no"></div>
+      <div data-tag="resetGroupElm"></div>
+    </div>`);
+
+  // Keeping what the model saw, so the limits above can be argued with.
+  recordFace = helm(`
+    <div class="Wink__face Wink__scroll">
+      <div class="Wink__note">
+        A recording keeps the numbers the model read off your face -- the eye
+        scores, the head angles, and what Wink made of them -- for the last
+        twenty minutes. It never keeps the picture.
+        <br><br>
+        Press <strong>Mark</strong> straight after a wink you meant, so the
+        recording can be read without guessing which of them counted.
+      </div>
+      <div data-tag="recordGroupElm"></div>
+      <div data-tag="count" class="Wink__count" translate="no">Nothing recorded yet.</div>
+      <div data-tag="saveGroupElm"></div>
+    </div>`);
+
+  constructor(panel) {
+    this.panel = panel;
+    this.stash = panel.cell.stash;
+    this.turner = WinkTurner.it;
+    this.built = false;
+    this.closed = false;
+    this.unheard = null;
+    // The last few seconds, for the trace. One entry per model frame.
+    this.history = [];
+    this.view = { watch: "Start", record: "Start", mark: "" };
+    panel.body.style.width = "unset";
+  }
+
+  build() {
+    if (this.built || this.closed) return;
+    this.built = true;
+    Object.assign(this, dataIndex("tag", this.aimFace));
+    Object.assign(this, dataIndex("tag", this.limitsFace));
+    Object.assign(this, dataIndex("tag", this.recordFace));
+
+    let tabs = this.tabs = new TabView(this.panel, "Aim", "Limits", "Record");
+    tabs.frame.style.height = "100%";
+    tabs.faces.style.position = "relative";
+    tabs.faces.style.top = "0";
+    tabs.tabs["Aim"].face.append(this.aimFace);
+    tabs.tabs["Limits"].face.append(this.limitsFace);
+    tabs.tabs["Record"].face.append(this.recordFace);
+    this.elm.append(tabs.elm);
+    tabs.tabs["Aim"].select();
+
+    this.buildAim();
+    this.buildLimits();
+    this.buildRecord();
+
+    // The camera belongs to the turner and may well already be running, so
+    // everything here is drawn from its state rather than assumed to be off.
+    this.unheard = this.turner.listen((what, ...args) => this.heard(what, ...args));
+    this.refresh();
+  }
+
+  buildAim() {
+    // One button in one place: whichever of these the state calls for.
+    this.watchGroup = new ButtonGroup(this.view, {
+      Start: { svg: "Start", toggle: "watch" },
+      Stop: { svg: "Stop", toggle: "watch" },
+    }, () => this.toggleWatch());
+    this.watchGroupElm.replace(this.watchGroup.elm);
+
+    this.turnGroup = new ButtonGroup(this.stash, {
+      Turn: { svg: "Next Page", radio: "turn" },
+      Hold: { svg: "Pause", radio: "turn" },
+    }, () => this.refresh());
+    this.turnGroupElm.replace(this.turnGroup.elm);
+  }
+
+  buildLimits() {
+    this.sidesGroup = new ButtonGroup(this.stash, {
+      "Right On": { svg: "Wink", radio: "sides" },
+      "Left On": { svg: "Wink Left", radio: "sides" },
+    }, () => this.tuned());
+    this.sidesGroupElm.replace(this.sidesGroup.elm);
+
+    this.backGroup = new ButtonGroup(this.stash, {
+      "Back On": { svg: "Void", radio: "back" },
+      "Back Off": { svg: "Void", radio: "back" },
+    }, () => this.tuned());
+    this.backGroupElm.replace(this.backGroup.elm);
+
+    // A step of .05 off a .35 floor lands on 0.6500000000000001, so the
+    // scores are formatted rather than printed. The numbers themselves are
+    // exempt from the browser's auto-translation, which otherwise rewrites
+    // decimal separators out from under the reader.
+    let score = (words) => (tag, value) =>
+      `${words} ${noTranslate(Number(value).toFixed(2))}`;
+    let count = (words, unit) => (tag, value) =>
+      `${words} ${noTranslate(Math.round(value) + unit)}`;
+    this.limitsGroup = new SliderGroup(this.stash, {
+      closed: { min: .35, max: .95, step: .05, msg: score("An eye counts as shut at") },
+      open: { min: .05, max: .6, step: .05, msg: score("The other must stay under") },
+      showMs: { min: 50, max: 400, step: 25, msg: count("Gauge appears after", " ms") },
+      fireMs: { min: 150, max: 900, step: 25, msg: count("Page turns after", " ms") },
+      cooldownMs: { min: 300, max: 2000, step: 100, msg: count("Then waits", " ms") },
+      restMs: { min: 0, max: 1200, step: 50, msg: count("Eyes must first rest open", " ms") },
+      yawMax: { min: 8, max: 70, step: 2, msg: count("Head may be turned", "°") },
+      pitchMax: { min: 8, max: 70, step: 2, msg: count("Head may be tilted", "°") },
+      rollMax: { min: 8, max: 70, step: 2, msg: count("Head may be leaned", "°") },
+    }, () => this.tuned());
+    this.limitsGroupElm.replace(this.limitsGroup.elm);
+    this.limitsGroup.refresh();
+
+    this.placeGroup = new ButtonGroup(this.stash, Object.fromEntries(
+      Object.keys(WinkHud.places).map(where =>
+        [where, { svg: "Void", radio: "place" }])
+    ), () => this.tuned());
+    this.placeGroupElm.replace(this.placeGroup.elm);
+
+    this.cameraGroup = new ButtonGroup({ pick: "Camera" }, {
+      Camera: { svg: "Webcam", radio: "pick", redo: true },
+    }, () => this.pickCamera());
+    this.cameraGroupElm.replace(this.cameraGroup.elm);
+    this.showCamera();
+
+    this.resetGroup = new ButtonGroup({ reset: "" }, {
+      Reset: { svg: "Reset", radio: "reset", redo: true },
+    }, () => this.reset());
+    this.resetGroupElm.replace(this.resetGroup.elm);
+  }
+
+  buildRecord() {
+    this.recordGroup = new ButtonGroup(this.view, {
+      Start: { svg: "Start", toggle: "record" },
+      Stop: { svg: "Stop", toggle: "record" },
+      Mark: { svg: "Mark", radio: "mark", redo: true },
+    }, (e, property, tag) => {
+      if (tag == "Mark") this.turner.log?.label("wink");
+      else this.turner.record(!this.turner.recording);
+      this.refresh();
+    });
+    this.recordGroupElm.replace(this.recordGroup.elm);
+
+    this.saveGroup = new ButtonGroup({ save: "" }, {
+      Save: { svg: "Save", radio: "save", redo: true },
+      Forget: { svg: "Trash", radio: "save", redo: true },
+    }, (e, property, tag) => {
+      if (tag == "Save") this.turner.save();
+      else this.turner.forget();
+      this.refresh();
+    });
+    this.saveGroupElm.replace(this.saveGroup.elm);
+  }
+
+  async toggleWatch() {
+    if (this.turner.running || this.turner.status == "loading") {
+      this.turner.off();
+      this.refresh();
+      return;
+    }
+    this.refresh();
+    await this.turner.on();
+    if (this.closed) return;
+    // A failure has a reason worth more than a lamp: say it in full, once,
+    // rather than leaving the reader to guess from a colour.
+    if (!this.turner.running && this.turner.detail)
+      dialog(`<strong>Wink cannot watch.</strong><br><br>
+        <div style="text-align:left">${this.turner.detail}</div>`);
+    this.refresh();
+  }
+
+  // A setting changed: take it up straight away, including mid-watch, because
+  // these are meant to be moved while the scores are there to read against.
+  tuned() {
+    this.turner.tune();
+    this.refresh();
+  }
+
+  reset() {
+    // stashDefaults is the JSON of every ring's stash as it was before
+    // anything was loaded over it, so this is the shipped set of numbers.
+    let fresh;
+    try { fresh = JSON.parse(_menu_.stashDefaults)?.more?.cells?.wink; }
+    catch (error) { console.warn("Wink: could not read the defaults:", error); }
+    if (!fresh) return;
+    Object.assign(this.stash, fresh, { name: this.stash.name });
+    this.limitsGroup.refresh();
+    this.sidesGroup.refresh();
+    this.backGroup.refresh();
+    this.placeGroup.refresh();
+    this.turnGroup.refresh();
+    this.tuned();
+  }
+
+  // Step to the next camera. A tablet on a stand has a front camera pointing
+  // somewhere unhelpful as often as not, and this is the whole of the fix.
+  async pickCamera() {
+    let cameras = [];
+    try {
+      cameras = (await navigator.mediaDevices.enumerateDevices())
+        .filter(device => device.kind == "videoinput");
+    } catch (error) {
+      console.warn("Wink: could not list cameras:", error);
+    }
+    if (this.closed) return;
+    if (cameras.length < 2) {
+      this.showCamera(cameras);
+      if (!cameras.length) dialog("No camera was found on this device.");
+      return;
+    }
+    let at = cameras.findIndex(camera => camera.deviceId == this.stash.device);
+    this.stash.device = cameras[(at + 1) % cameras.length].deviceId;
+    this.showCamera(cameras);
+    // The camera is chosen when it is opened, so a change means reopening it.
+    if (!this.turner.running) return;
+    await this.toggleWatch();
+    if (!this.closed) await this.toggleWatch();
+  }
+
+  async showCamera(cameras = null) {
+    if (!cameras) {
+      // Labels are only given out once permission has been granted, so before
+      // the first watch this is deliberately vague rather than wrong.
+      try {
+        cameras = (await navigator.mediaDevices.enumerateDevices())
+          .filter(device => device.kind == "videoinput");
+      } catch (error) { cameras = []; }
+    }
+    if (this.closed || !this.cameraName) return;
+    let chosen = cameras.find(camera => camera.deviceId == this.stash.device);
+    this.cameraName.textContent = cameras.length > 1
+      ? `${chosen?.label || "Default camera"} -- ${cameras.length} to choose from`
+      : chosen?.label || "";
+  }
+
+  // Something happened in the turner: a frame, a status change, a recording
+  // started or stopped.
+  heard(what, ...args) {
+    if (this.closed || !this.built) return;
+    if (what == "frame") this.drew(...args);
+    else this.refresh();
+  }
+
+  // Everything that is not per-frame: the buttons, the lamp's words when idle,
+  // the preview's stream, the recording's size.
+  refresh() {
+    if (!this.built || this.closed) return;
+    let turner = this.turner;
+    this.view.watch = turner.running || turner.status == "loading" ? "Stop" : "Start";
+    this.view.record = turner.recording ? "Stop" : "Start";
+    this.watchGroup.refresh();
+    this.recordGroup.refresh();
+    this.turnGroup.refresh();
+
+    // The preview shares the camera the model is already reading; it does not
+    // open one of its own.
+    let stream = turner.watch.stream;
+    if (this.preview.srcObject !== stream) {
+      this.preview.srcObject = stream ?? null;
+      if (stream) this.preview.play().catch(() => {});
+    }
+
+    for (let name of ["left", "right"]) {
+      this[name + "Shut"].style.left = `${this.stash.closed * 100}%`;
+      this[name + "Open"].style.left = `${this.stash.open * 100}%`;
+    }
+
+    let log = turner.log;
+    this.count.textContent = !log?.rows.length ? "Nothing recorded yet."
+      : `${log.rows.length} frames, ${log.seconds.toFixed(0)}s`
+        + `, ${log.marked} marked` + (log.dropped ? ", oldest dropped" : "");
+
+    if (!turner.running) {
+      this.lamp.classList.remove("Wink__lamp-ready", "Wink__lamp-held");
+      this.lampText.textContent =
+        turner.status == "loading" ? turner.detail || "Starting"
+        : turner.status == "unsupported" || turner.status == "failed" ? turner.detail
+        : "Wink is off.";
+      this.leftScore.textContent = this.rightScore.textContent = "--";
+      this.leftFill.style.width = this.rightFill.style.width = "0";
+      this.read.innerHTML = "&nbsp;";
+      this.history.length = 0;
+      this.drawTrace();
+    }
+  }
+
+  // One frame. This runs fifteen times a second, so it only touches text and
+  // widths and draws one small canvas.
+  drew(sample, verdict) {
+    this.leftFill.style.width = `${Math.round(sample.left * 100)}%`;
+    this.rightFill.style.width = `${Math.round(sample.right * 100)}%`;
+    this.leftScore.textContent = sample.left.toFixed(2);
+    this.rightScore.textContent = sample.right.toFixed(2);
+
+    this.lamp.classList.toggle("Wink__lamp-ready", verdict.ready);
+    this.lamp.classList.toggle("Wink__lamp-held", verdict.track && !verdict.ready);
+    this.lampText.textContent = Wink.says[verdict.why] ?? verdict.why;
+
+    this.read.textContent = sample.face
+      ? `yaw ${Math.round(sample.yaw)}°  pitch ${Math.round(sample.pitch)}°`
+        + `  lean ${Math.round(sample.roll)}°  ${Math.round(sample.fps)} fps`
+        + `  ${this.turner.turns} turned`
+      : `no face  ${Math.round(sample.fps)} fps`;
+
+    this.history.push({
+      t: sample.t, left: sample.left, right: sample.right,
+      state: verdict.state, turn: !!verdict.turn,
+    });
+    let from = sample.t - Wink.traceMs;
+    while (this.history.length && this.history[0].t < from) this.history.shift();
+    this.drawTrace();
+  }
+
+  // The last few seconds of both eyes, against the thresholds they are tested
+  // against. Seeing a blink and a wink next to each other is what makes the
+  // numbers on the Limits tab mean anything.
+  drawTrace() {
+    let canvas = this.trace, ctx = canvas?.getContext("2d");
+    if (!ctx) return;
+    let { width: w, height: h } = canvas;
+    ctx.clearRect(0, 0, w, h);
+    let now = this.history.at(-1)?.t ?? 0;
+    let pad = 3;
+    let at = (t) => w - (now - t) / Wink.traceMs * w;
+    let up = (score) => pad + (1 - score) * (h - pad * 2);
+
+    // Where the page would turn, and where an eye stops counting as open.
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    for (let [score, colour] of [[this.stash.closed, "#d08a3a"], [this.stash.open, "#6f6f6f"]]) {
+      ctx.strokeStyle = colour;
+      ctx.beginPath();
+      ctx.moveTo(0, up(score));
+      ctx.lineTo(w, up(score));
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+    if (!this.history.length) return;
+
+    // The stretches where a gauge was filling, so a charge that came to
+    // nothing can be told from one that turned a page.
+    ctx.fillStyle = "rgba(73, 169, 240, .22)";
+    for (let i = 0; i < this.history.length; i++) {
+      if (this.history[i].state != "charging") continue;
+      let x = at(this.history[i].t);
+      ctx.fillRect(x, 0, Math.max(2, w / Wink.traceMs * 70), h);
+    }
+    ctx.fillStyle = "#46bb63";
+    for (let row of this.history)
+      if (row.turn) ctx.fillRect(at(row.t) - 1.5, 0, 3, h);
+
+    ctx.lineWidth = 2;
+    for (let [key, colour] of [["left", "#e08a3c"], ["right", "#49a9f0"]]) {
+      ctx.strokeStyle = colour;
+      ctx.beginPath();
+      this.history.forEach((row, i) => {
+        let x = at(row.t), y = up(row[key]);
+        if (i) ctx.lineTo(x, y); else ctx.moveTo(x, y);
+      });
+      ctx.stroke();
+    }
+  }
+
+  destructor() {
+    this.closed = true;
+    this.unheard?.();
+    this.unheard = null;
+    // The camera stays as it is: the panel is where it gets aimed, not what
+    // keeps it open.
+    this.preview && (this.preview.srcObject = null);
+  }
+  // How long the trace shows, in milliseconds.
+  static traceMs = 6000;
+
+  // The judge's reasons, as something to read. Keyed by WinkJudge's why.
+  static says = {
+    ready: "Ready -- a wink now would count.",
+    settling: "Settling: open both eyes for a moment.",
+    "eye-shut": "One eye is shut.",
+    "eyes-shut": "Both eyes are shut -- that is a blink, and it is ignored.",
+    "no-face": "No face found. Is the camera aimed at you?",
+    "eye-left-out": "Your left eye is outside the picture.",
+    "eye-right-out": "Your right eye is outside the picture.",
+    turned: "Your head is turned too far to read a wink from.",
+    tilted: "Your head is tilted too far to read a wink from.",
+    rolled: "Your head is leaned too far to read a wink from.",
+    slow: "The model is running too slowly to time a wink.",
+  };
+}

@@ -1,4 +1,4 @@
-export { WinkJudge, WINK_LIMITS, winkPose };
+export { WinkJudge, WinkWatch, WinkLog, WinkHud, WinkTurner, WINK_LIMITS, winkPose };
 // +skip
 
 /**
@@ -21,7 +21,7 @@ export { WinkJudge, WINK_LIMITS, winkPose };
   <https://www.gnu.org/licenses/>.
 **/
 
-import { clamp } from "./common.js";
+import { clamp, css, dataIndex, helm, Schedule } from "./common.js";
 // -skip
 
 /**
@@ -87,6 +87,14 @@ const WINK_LIMITS = {
   // Below this many frames a second the held times are too coarse to measure a
   // tenth of a second against, so the gesture is refused rather than guessed.
   fpsMin: 7,
+  // A gap between frames longer than this abandons the gesture in progress.
+  // Held time is measured from the clock, not counted in frames, so without
+  // this a stall -- a backgrounded tab, a big page being rendered, the model
+  // losing its GPU context for a moment -- would hand back a held time that
+  // had run on through it, and fire a turn nobody completed. Must stay well
+  // above the frame interval at fpsMin, or ordinary slowness would read as a
+  // stall.
+  gapMs: 250,
 };
 
 // Which eye asks for which direction. Either side may be null, which switches
@@ -158,6 +166,7 @@ class WinkJudge {
     this.restWhy = "settling";
     this.heldFrom = 0;    // when the eye now shut was first seen shut
     this.restFrom = null; // when both eyes were first seen resting open
+    this.lastT = null;    // the previous frame's clock, to notice a stall
     this.firedAt = -Infinity;
     // Whether a settled rest has been seen that no gesture has spent yet. A
     // wink only counts when it starts from one, which is what keeps the second
@@ -165,6 +174,16 @@ class WinkJudge {
     // taking up a gesture spends it -- also what stops the eye that just
     // turned a page from turning the next one without being opened first.
     this.rested = false;
+  }
+
+  // Take up new limits or a new mapping of eyes to directions, and drop any
+  // gesture in progress: a charge measured against the old numbers means
+  // nothing against the new ones, and the reader moving a slider is not asking
+  // for a page to be turned.
+  tune(limits = {}, sides = {}) {
+    this.limits = { ...WINK_LIMITS, ...limits };
+    this.sides = { ...WINK_SIDES, ...sides };
+    this.reset();
   }
 
   // Which eye the player is holding shut, as the player's own left or right,
@@ -220,6 +239,21 @@ class WinkJudge {
 
   feed(sample) {
     let L = this.limits, t = sample.t;
+
+    // Nothing is known about the eyes across a stall, so a gesture cannot be
+    // held through one: the clock ran on, but the evidence did not. The
+    // cooldown is deliberately left alone -- a page that has just turned has
+    // just turned, however long the stall was.
+    let gap = this.lastT != null && t - this.lastT > L.gapMs;
+    this.lastT = t;
+    if (gap) {
+      this.direction = null;
+      this.heldFrom = t;
+      this.restFrom = null;
+      this.rested = false;
+      this.progress = 0;
+      this.state = "idle";
+    }
 
     this.track = this.judgeTrack(sample);
     let rest = this.track && this.judgeRest(sample);
@@ -339,6 +373,689 @@ function winkPose(matrix) {
   };
 }
 
+/**
+class WinkWatch
+
+  The camera and the landmark model, turned into a stream of samples for a
+  WinkJudge.
+
+  The model and its WebAssembly runtime are 17 MB, which is more than the rest
+  of Podium put together, so none of it is loaded until the reader asks for it:
+  start() fetches it and the service worker keeps it afterwards. That is also
+  why loading reports its progress -- the first start() on a slow connection is
+  a long wait, and a feature that looks like it has hung is a feature nobody
+  turns on twice.
+
+  Everything it sees stays on the device. There is no MediaPipe service behind
+  this: the model runs here, and the frames are not kept at all unless the
+  reader asks for a recording, which keeps numbers about a face and never a
+  picture of one.
+**/
+
+// Where the model and runtime live, relative to whichever page this is: the
+// packaged page, the static-host deployment, and src/ served directly all
+// resolve this to the same files. Built against document.baseURI rather than
+// against this module's own URL, because in the packaged build there is no
+// module -- this file has been concatenated into the page.
+const winkAsset = (name) => new URL("mediapipe/" + name, document.baseURI).href;
+
+// The landmarks each eye's centre is averaged from: the outer and inner
+// corners and the middle of each lid. MediaPipe's left and right are the
+// player's own, so they pair with eyeBlinkLeft and eyeBlinkRight -- which the
+// Wink panel's preview exists to confirm, because having them the wrong way
+// round would read as the model being wrong rather than this being wrong.
+const WINK_EYES = {
+  left: [362, 263, 386, 374],
+  right: [33, 133, 159, 145],
+};
+
+class WinkWatch {
+  // How often the model is asked for a face. Detection is synchronous and the
+  // score is being drawn over, so this is deliberately well short of the
+  // camera's own rate: a tenth of a second of held eye still spans a frame or
+  // two, and the gauge is drawn from a clock rather than from frames.
+  static fps = 15;
+
+  constructor({ limits, sides, onFrame, onStatus } = {}) {
+    this.judge = new WinkJudge(limits, sides);
+    this.onFrame = onFrame ?? (() => {});
+    this.onStatus = onStatus ?? (() => {});
+    this.log = null;         // a WinkLog, while the panel is recording
+    this.video = null;
+    this.stream = null;
+    this.marker = null;
+    this.shapeNames = null;  // the model's blendshape labels, in its order
+    this.shapes = null;      // their scores this frame
+    this.blink = { left: -1, right: -1 }; // where the two eye scores sit
+    this.rate = 0;           // frames a second the model is managing
+    this.status = "off";
+    this.detail = "";
+    // start() is a long sequence of awaits and the panel can be closed part
+    // way through any of them, so every step checks it is still the current
+    // one before going on.
+    this.run = 0;
+    this.frame = 0;
+    this.lastAt = 0;
+    this.lastStamp = 0;
+    this.lastFrameTime = -1;
+  }
+
+  get running() { return !!this.marker && !!this.stream; }
+
+  say(status, detail = "") {
+    this.status = status;
+    this.detail = detail;
+    this.onStatus(status, detail);
+  }
+
+  // The model, with the two outputs a wink is read from: the eye scores, and
+  // the head rotation that says whether they can be believed.
+  markerOptions(delegate) {
+    return {
+      baseOptions: { modelAssetPath: winkAsset("face_landmarker.task"), delegate },
+      runningMode: "VIDEO",
+      numFaces: 1,
+      outputFaceBlendshapes: true,
+      outputFacialTransformationMatrixes: true,
+    };
+  }
+
+  async start({ deviceId } = {}) {
+    this.stop();
+    let run = ++this.run;
+    let mine = () => run == this.run;
+    try {
+      // Only the SIMD runtime is vendored: the fallback is another 13 MB for
+      // browsers from before 2021, and the loader would ask for it by name and
+      // get a 404, which reads as a broken install rather than an old browser.
+      this.say("loading", "Checking this browser");
+      let { FaceLandmarker, FilesetResolver } =
+        await import(/* webpackIgnore: true */ winkAsset("vision_bundle.mjs"));
+      if (!mine()) return false;
+      let simd = await FilesetResolver.isSimdSupported();
+      if (!mine()) return false;
+      if (!simd) {
+        this.say("unsupported",
+          "This browser cannot run the face model: it has no WebAssembly SIMD.");
+        return false;
+      }
+
+      this.say("loading", "Fetching the face model");
+      let fileset = await FilesetResolver.forVisionTasks(winkAsset("wasm"));
+      if (!mine()) return false;
+      let marker = await FaceLandmarker
+        .createFromOptions(fileset, this.markerOptions("GPU"))
+        .catch((error) => {
+          // No usable WebGL -- another tab holding the context, a headless
+          // browser, a locked-down device. The model runs on the CPU too, more
+          // slowly, and the judge refuses the gesture by itself if what comes
+          // out is too slow to time a tenth of a second against.
+          console.warn("Wink: the GPU delegate failed, falling back to the CPU:", error);
+          return FaceLandmarker.createFromOptions(fileset, this.markerOptions("CPU"));
+        });
+      if (!mine()) { marker.close(); return false; }
+      this.marker = marker;
+
+      this.say("loading", "Opening the camera");
+      let stream = await navigator.mediaDevices.getUserMedia({
+        audio: false,
+        video: {
+          ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" }),
+          width: { ideal: 640 }, height: { ideal: 480 },
+        },
+      });
+      if (!mine()) { stream.getTracks().forEach(track => track.stop()); return false; }
+      this.stream = stream;
+
+      let video = this.video = document.createElement("video");
+      video.muted = true;
+      video.playsInline = true;
+      video.srcObject = stream;
+      await video.play();
+      if (!mine()) { this.stop(); return false; }
+
+      this.judge.reset();
+      // Not the target rate: the first detection compiles shaders and can take
+      // a second or more, and claiming a rate before one has been measured
+      // would let the judge time a gesture against a model that is not yet
+      // keeping up. Zero reads as "too slow", which is true until it is not.
+      this.rate = 0;
+      this.lastAt = 0;
+      this.lastStamp = 0;
+      this.lastFrameTime = -1;
+      this.say("on");
+      this.schedule(run);
+      return true;
+    } catch (error) {
+      if (!mine()) return false;
+      this.stop();
+      console.error("Wink: could not start:", error);
+      this.say("failed", this.explain(error));
+      return false;
+    }
+  }
+
+  // What went wrong, in terms of something the reader can go and change.
+  explain(error) {
+    let name = error?.name;
+    if (name == "NotAllowedError")
+      return "Permission to use the camera was denied or dismissed.";
+    if (name == "NotReadableError")
+      return "The camera is unavailable -- it is in use by another app, or the "
+        + "system video stack was reset. <strong>Reloading Podium usually fixes "
+        + "this.</strong>";
+    if (name == "NotFoundError") return "No camera was found on this device.";
+    if (name == "OverconstrainedError") return "No camera matches what was asked for.";
+    // A missing model arrives as a failed dynamic import, or as a 404 that
+    // became a WebAssembly compile error, neither of which says anything a
+    // reader could act on.
+    if (/fetch|import|Failed to load|magic word|WebAssembly|404/i.test(String(error?.message)))
+      return "The face model could not be loaded. In your own build, run "
+        + "<code>fetch-wink-assets.sh</code> and build again.";
+    return `${name ?? "Error"}: ${error?.message ?? error}`;
+  }
+
+  stop() {
+    this.run++;
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    if (this.video) {
+      this.video.pause();
+      this.video.srcObject = null;
+      this.video.removeAttribute("src");
+      this.video.load();
+      this.video = null;
+    }
+    // The camera light going out is the only assurance a player has that this
+    // is off, so the tracks are stopped before anything else can fail.
+    this.stream?.getTracks().forEach(track => track.stop());
+    this.stream = null;
+    this.marker?.close();
+    this.marker = null;
+    this.judge.reset();
+    if (this.status != "off") this.say("off");
+  }
+
+  schedule(run) {
+    // requestVideoFrameCallback fires once per camera frame, which is a better
+    // clock than the compositor's; without it the animation frame is close
+    // enough at these rates.
+    if (this.video?.requestVideoFrameCallback)
+      this.video.requestVideoFrameCallback(() => this.tick(run));
+    else this.frame = requestAnimationFrame(() => this.tick(run));
+  }
+
+  tick(run) {
+    if (run != this.run || !this.running) return;
+    this.schedule(run);
+
+    let video = this.video;
+    if (video.readyState < 2) return;
+    // Pace the model well under the camera's rate, and never hand it the same
+    // frame twice: a repeated frame is a repeated score, which would let a
+    // stalled camera fill the gauge on an eye that has since been opened.
+    let now = performance.now();
+    if (now - this.lastAt < 1000 / WinkWatch.fps - 1) return;
+    if (video.currentTime == this.lastFrameTime) return;
+    this.lastFrameTime = video.currentTime;
+    if (this.lastAt) {
+      // Smoothed, because one late frame is not a slow model, and the judge
+      // refuses the gesture outright below its floor.
+      let rate = 1000 / Math.max(1, now - this.lastAt);
+      this.rate = this.rate ? this.rate * 0.8 + rate * 0.2 : rate;
+    }
+    this.lastAt = now;
+
+    let result;
+    try {
+      // The model insists its timestamps increase, and two frames inside one
+      // millisecond are possible on a fast machine.
+      let stamp = Math.max(now, this.lastStamp + 1);
+      this.lastStamp = stamp;
+      result = this.marker.detectForVideo(video, stamp);
+    } catch (error) {
+      // A detection that throws is usually a lost WebGL context, and it will
+      // throw on every frame from here on: stop rather than spin.
+      console.error("Wink: detection failed:", error);
+      this.stop();
+      this.say("failed", "The face model stopped responding. Turn Wink on again to restart it.");
+      return;
+    }
+
+    let sample = this.read(result, now);
+    let verdict = this.judge.feed(sample);
+    this.log?.add(sample, verdict, this.shapes, this.shapeNames);
+    this.onFrame(sample, verdict);
+  }
+
+  // One frame of the model's output as a judge sample, with the full set of
+  // blendshape scores left in this.shapes for the recording.
+  read(result, t) {
+    let marks = result.faceLandmarks?.[0];
+    let categories = result.faceBlendshapes?.[0]?.categories;
+    if (!marks || !categories) {
+      this.shapes?.fill(0);
+      return { t, face: false, left: 0, right: 0, fps: this.rate };
+    }
+
+    if (!this.shapeNames || this.shapeNames.length != categories.length) {
+      this.shapeNames = categories.map(category => category.categoryName);
+      this.shapes = new Float32Array(categories.length);
+      this.blink = {
+        left: this.shapeNames.indexOf("eyeBlinkLeft"),
+        right: this.shapeNames.indexOf("eyeBlinkRight"),
+      };
+    }
+    for (let i = 0; i < categories.length; i++) this.shapes[i] = categories[i].score;
+
+    let centre = (which) => {
+      let marked = WINK_EYES[which].map(i => marks[i]).filter(Boolean);
+      if (!marked.length) return undefined;
+      return {
+        x: marked.reduce((sum, mark) => sum + mark.x, 0) / marked.length,
+        y: marked.reduce((sum, mark) => sum + mark.y, 0) / marked.length,
+      };
+    };
+
+    return {
+      t,
+      face: true,
+      left: this.blink.left < 0 ? 0 : this.shapes[this.blink.left],
+      right: this.blink.right < 0 ? 0 : this.shapes[this.blink.right],
+      eyes: { left: centre("left"), right: centre("right") },
+      ...winkPose(result.facialTransformationMatrixes?.[0]),
+      fps: this.rate,
+    };
+  }
+}
+
+/**
+class WinkLog
+
+  A recording of what the model saw, for working out what the limits should be.
+
+  Everything in WINK_LIMITS is a guess until somebody has sat behind a flute
+  with a tablet on a stand and measured it, and the awkward part is that the
+  interesting moments are the ones nobody can reproduce on demand: the page
+  that turned itself in bar 40, the wink that went unread three times running.
+  So this keeps the last stretch of everything -- all 52 blendshape scores, the
+  head rotation, where the eyes were, and what the judge made of it -- in a
+  ring buffer, and the reader saves it after the fact.
+
+  The frames themselves are never kept. A row of numbers about a face is not a
+  picture of one, and there is no reason for this to be able to produce one.
+**/
+class WinkLog {
+  // Twenty minutes at 15 frames a second, which is a movement rather than a
+  // moment, and about 25 MB of CSV once written out.
+  constructor(rows = 18000) {
+    this.limit = rows;
+    this.rows = [];
+    this.names = null;
+    this.mark = "";   // stamped onto the next row, then cleared
+    this.marked = 0;  // how many rows the reader has stamped
+    this.dropped = 0; // rows the ring buffer has thrown away
+  }
+
+  // Say that the wink just made was deliberate, so the recording can be read
+  // without guessing which of these was meant to count. This is what turns a
+  // recording into training data later on.
+  label(what) {
+    this.mark = what;
+    this.marked++;
+  }
+
+  add(sample, verdict, shapes, names) {
+    if (names && !this.names) this.names = [...names];
+    this.rows.push({
+      t: Math.round(sample.t),
+      mark: this.mark,
+      face: sample.face ? 1 : 0,
+      left: sample.left, right: sample.right,
+      yaw: sample.yaw ?? 0, pitch: sample.pitch ?? 0, roll: sample.roll ?? 0,
+      eyeLeftX: sample.eyes?.left?.x ?? "", eyeLeftY: sample.eyes?.left?.y ?? "",
+      eyeRightX: sample.eyes?.right?.x ?? "", eyeRightY: sample.eyes?.right?.y ?? "",
+      fps: sample.fps ?? 0,
+      track: verdict.track ? 1 : 0,
+      ready: verdict.ready ? 1 : 0,
+      why: verdict.why,
+      state: verdict.state,
+      direction: verdict.direction ?? "",
+      progress: verdict.progress,
+      turn: verdict.turn ?? "",
+      shapes: shapes ? Float32Array.from(shapes) : null,
+    });
+    this.mark = "";
+    if (this.rows.length > this.limit) {
+      this.rows.shift();
+      this.dropped++;
+    }
+  }
+
+  get seconds() {
+    if (this.rows.length < 2) return 0;
+    return (this.rows.at(-1).t - this.rows[0].t) / 1000;
+  }
+
+  // The whole recording as CSV: one row per frame, with the judge's reading of
+  // it beside the numbers it was read from, so a spreadsheet can plot either.
+  toCsv() {
+    let plain = ["t", "mark", "face", "left", "right", "yaw", "pitch", "roll",
+      "eyeLeftX", "eyeLeftY", "eyeRightX", "eyeRightY", "fps",
+      "track", "ready", "why", "state", "direction", "progress", "turn"];
+    let round = (value) => typeof value == "number" ? +value.toFixed(5) : value;
+    let out = [[...plain, ...(this.names ?? [])].join(",")];
+    for (let row of this.rows) {
+      let cells = plain.map(key => round(row[key]));
+      if (this.names) for (let i = 0; i < this.names.length; i++)
+        cells.push(row.shapes ? +row.shapes[i].toFixed(5) : "");
+      out.push(cells.join(","));
+    }
+    return out.join("\n") + "\n";
+  }
+}
+
+/**
+class WinkHud
+
+  The small ring in the corner of the screen that says what the camera makes of
+  the player.
+
+  Two jobs in one mark, because a player reading music has no attention to
+  spare for two:
+
+  The ring's colour answers "is it watching me?" -- grey for no face found,
+  amber for a face it cannot read a wink from (and the panel says which of the
+  reasons it is), green for ready. Without this the only way to find out
+  whether the camera is aimed well enough is to wink and see, which during a
+  rest is an experiment nobody has time for. A steady green fades back after a
+  few seconds so it stops asking to be looked at, and comes back the instant
+  anything changes.
+
+  The inside fills as a wink is held, from the moment one is noticed to the
+  moment the page would turn. That is what makes the gesture something aimed
+  rather than something risked: the player can watch it coming and open the eye
+  to call it off.
+**/
+class WinkHud {
+  // How long a green ring stays bright before it fades back.
+  static settleMs = 2500;
+
+  static css = css("WinkHud", `
+    .WinkHud {
+      position: fixed;
+      width: 1.6em;
+      height: 1.6em;
+      border-radius: 50%;
+      /* Over the pages, under every panel: panels count up from _zTop_, and
+         this must never join that argument. */
+      z-index: 299;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      pointer-events: none;
+      color: #fff;
+      background: rgba(0, 0, 0, .38);
+      box-shadow: 0 0 0 2px var(--winkRing), 0 1px 6px rgba(0, 0, 0, .35);
+      transition: opacity ${_gs_ / 2}ms, box-shadow ${_gs_ / 3}ms, transform ${_gsgs_}ms;
+      --winkRing: #8c8c8c;
+      --winkDeg: 0deg;
+    }
+    .WinkHud-shown { display: flex; }
+    .WinkHud-lost { --winkRing: #8c8c8c; }
+    .WinkHud-held { --winkRing: #d79a2b; }
+    .WinkHud-ready { --winkRing: #46bb63; }
+    /* A ring that has had nothing to say for a while stops saying it loudly. */
+    .WinkHud-faded { opacity: .28; }
+    .WinkHud-turned { transform: scale(1.3); }
+    .WinkHud__gauge {
+      position: absolute;
+      inset: 2px;
+      border-radius: 50%;
+      opacity: 0;
+      background: conic-gradient(#49a9f0 0 var(--winkDeg), transparent var(--winkDeg));
+    }
+    .WinkHud-charging .WinkHud__gauge, .WinkHud-turned .WinkHud__gauge { opacity: 1; }
+    .WinkHud__mark {
+      position: relative;
+      width: .62em;
+      height: .62em;
+      opacity: 0;
+      transition: opacity ${_gsgs_}ms;
+    }
+    .WinkHud-charging .WinkHud__mark, .WinkHud-turned .WinkHud__mark { opacity: 1; }
+    /* One chevron, turned round for the other direction. */
+    .WinkHud-prev .WinkHud__mark { transform: scaleX(-1); }
+    .WinkHud-at-bottomRight { right: .8em; bottom: .8em; }
+    .WinkHud-at-bottomLeft { left: .8em; bottom: .8em; }
+    .WinkHud-at-bottom { left: 50%; bottom: .8em; margin-left: -.8em; }
+    .WinkHud-at-topRight { right: .8em; top: .8em; }
+  `);
+
+  // Where the ring may sit, as the reader chooses it. Low and to one side by
+  // default: a score is read from the top down, so the bottom corners are the
+  // part of the screen a player's eyes are least often on.
+  static places = {
+    "Low Right": "bottomRight",
+    "Low Left": "bottomLeft",
+    "Low Centre": "bottom",
+    "High Right": "topRight",
+  };
+
+  elm = helm(`
+    <div class="WinkHud WinkHud-at-bottomRight">
+      <div data-tag="gauge" class="WinkHud__gauge"></div>
+      <svg data-tag="mark" class="WinkHud__mark" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M8 3l10 9-10 9" fill="none" stroke="currentColor"
+              stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+    </div>`);
+
+  constructor() {
+    Object.assign(this, dataIndex("tag", this.elm));
+    this.elm.style.fontSize = _menu_.elm.style.fontSize;
+    _body_.append(this.elm);
+    this.said = "";
+    this.saidAt = 0;
+    this.flash = new Schedule();
+  }
+
+  place(where) {
+    // An unrecognised setting -- a stash from a Podium that offered different
+    // corners -- still has to land somewhere.
+    let at = WinkHud.places[where] ?? "bottomRight";
+    for (let name of Object.values(WinkHud.places))
+      this.elm.classList.toggle(`WinkHud-at-${name}`, name == at);
+  }
+
+  draw(verdict) {
+    let classes = this.elm.classList;
+    classes.add("WinkHud-shown");
+    classes.toggle("WinkHud-lost", !verdict.track);
+    classes.toggle("WinkHud-held", verdict.track && !verdict.ready);
+    classes.toggle("WinkHud-ready", verdict.ready);
+    classes.toggle("WinkHud-charging", verdict.state == "charging");
+    if (verdict.direction) classes.toggle("WinkHud-prev", verdict.direction == "prev");
+    this.elm.style.setProperty("--winkDeg", `${Math.round(verdict.progress * 360)}deg`);
+
+    // Fade a ring that has been saying the same thing for a while, and bring
+    // it straight back when it changes: what the player needs to notice is the
+    // change, not the state.
+    let said = `${verdict.track}${verdict.ready}${verdict.state}${verdict.why}`;
+    let now = performance.now();
+    if (said != this.said) {
+      this.said = said;
+      this.saidAt = now;
+    }
+    classes.toggle("WinkHud-faded",
+      verdict.ready && verdict.state == "idle" && now - this.saidAt > WinkHud.settleMs);
+  }
+
+  // A page has turned. The gauge is full, so hold it there for a moment rather
+  // than letting it vanish on the same frame the page moves: the point is to
+  // connect the two.
+  turned() {
+    this.elm.classList.add("WinkHud-turned");
+    this.elm.classList.remove("WinkHud-faded");
+    this.elm.style.setProperty("--winkDeg", "360deg");
+    this.flash.run(_gsgs_ * 2, () => this.elm.classList.remove("WinkHud-turned"));
+  }
+
+  hide() {
+    this.flash.cancel();
+    this.elm.classList.remove("WinkHud-shown", "WinkHud-turned", "WinkHud-charging");
+    this.said = "";
+  }
+
+  destructor() {
+    this.flash.cancel();
+    this.elm.remove();
+  }
+}
+
+/**
+class WinkTurner
+
+  The one wink page-turner, and the only thing in here that touches the score.
+
+  There is one camera and one score, so there is one of these, reached as
+  WinkTurner.it. It outlives the Wink panel on purpose: the panel is where the
+  camera gets aimed and the limits get set, and the whole point is to close it
+  and go and play with the ring still watching. Closing the panel must not put
+  the camera out, and opening it again must not start a second one.
+
+  It owns the camera (WinkWatch), the ring in the corner (WinkHud) and the
+  recording (WinkLog), keeps its settings in the Wink menu cell's stash so they
+  are saved with everything else, and turns the page through the same _turnPage_
+  that a pedal and an arrow key go through -- so a wink obeys the score's own
+  Numbers settings about moving by bookmark, exactly as a pedal does.
+**/
+let theTurner = null;
+
+class WinkTurner {
+  static get it() { return theTurner ??= new WinkTurner(); }
+
+  constructor() {
+    this.watch = new WinkWatch({
+      onFrame: (sample, verdict) => this.frame(sample, verdict),
+      onStatus: (status, detail) => this.tell("status", status, detail),
+    });
+    this.hud = null;
+    this.log = null;
+    this.recording = false;
+    this.turns = 0;      // pages this watch has turned, for the panel to show
+    this.watchers = new Set();
+  }
+
+  get stash() { return _menu_?.rings?.more?.cells?.wink?.stash ?? {}; }
+  get running() { return this.watch.running; }
+  get status() { return this.watch.status; }
+  get detail() { return this.watch.detail; }
+
+  // The stash as the judge wants it. Anything the stash has no answer for is
+  // left to WINK_LIMITS, so a settings file saved by an older Podium that
+  // never had one of these keys still gets a working default.
+  limits() {
+    let limits = {};
+    for (let key of ["closed", "open", "showMs", "fireMs", "cooldownMs",
+                     "restMs", "yawMax", "pitchMax", "rollMax"])
+      if (typeof this.stash[key] == "number") limits[key] = this.stash[key];
+    return limits;
+  }
+
+  sides() {
+    let on = this.stash.sides == "Left On" ? "left" : "right";
+    let back = on == "left" ? "right" : "left";
+    return { [on]: "next", [back]: this.stash.back == "Back On" ? "prev" : null };
+  }
+
+  // Take the settings up, including in the middle of watching: the panel's
+  // sliders are meant to be moved while the camera is running and the scores
+  // are there to be read against.
+  tune() {
+    this.watch.judge.tune(this.limits(), this.sides());
+    this.hud?.place(this.stash.place);
+  }
+
+  async on() {
+    this.hud ??= new WinkHud();
+    this.tune();
+    let started = await this.watch.start({ deviceId: this.stash.device || undefined });
+    if (!started) this.hud.hide();
+    return started;
+  }
+
+  off() {
+    this.watch.stop();
+    this.hud?.hide();
+  }
+
+  // Start keeping what the model sees, or stop keeping it. Stopping does not
+  // throw the recording away -- the reader has still to save it, and the
+  // interesting part is usually whatever just went wrong.
+  record(on) {
+    this.recording = on;
+    if (on) this.log ??= new WinkLog();
+    this.watch.log = on ? this.log : null;
+    this.tell("record", on);
+  }
+
+  forget() {
+    this.watch.log = null;
+    this.log = null;
+    this.recording = false;
+    this.tell("record", false);
+  }
+
+  // Save the recording as CSV. Nothing the camera saw is in here but numbers:
+  // the scores, the angles and what the judge made of them.
+  save() {
+    if (!this.log?.rows.length) return false;
+    let stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+    let url = URL.createObjectURL(new Blob([this.log.toCsv()], { type: "text/csv" }));
+    let link = document.createElement("a");
+    link.download = `podium-wink-${stamp}.csv`;
+    link.href = url;
+    link.target = "_self";
+    link.rel = "noopener";
+    link.style.display = "none";
+    _body_.append(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 3000);
+    return true;
+  }
+
+  frame(sample, verdict) {
+    this.hud?.draw(verdict);
+    if (verdict.turn) {
+      this.hud?.turned();
+      // "Hold" fills the gauge and leaves the page alone, so the gesture can
+      // be tried against a real score without losing your place in it.
+      if (this.stash.turn != "Hold" && _turnPage_?.(verdict.turn)) this.turns++;
+    }
+    this.tell("frame", sample, verdict);
+  }
+
+  // The panel watches this while it is open, and stops watching when it
+  // closes; the camera carries on either way.
+  listen(watcher) {
+    this.watchers.add(watcher);
+    return () => this.watchers.delete(watcher);
+  }
+
+  tell(what, ...args) {
+    for (let watcher of [...this.watchers]) {
+      try { watcher(what, ...args); }
+      catch (error) { console.error("Wink: a watcher threw:", error); }
+    }
+  }
+}
+
 window._WinkJudge_ = WinkJudge;
+window._WinkHud_ = WinkHud;
+window._WinkTurner_ = WinkTurner;
+window._WinkWatch_ = WinkWatch;
+window._WinkLog_ = WinkLog;
 window._winkPose_ = winkPose;
 window._WINK_LIMITS_ = WINK_LIMITS;

@@ -58,7 +58,7 @@ import { escapeHtml, FileSrc, FileListView, FileSystemView, LocalFileView } from
 import { Layout } from "./layout.js";
 import { Score } from "./score.js";
 import { smuflTable } from "./smufl.js";
-import { Clock, Metronome, Piano, Review, Stopwatch, Volume } from "./tool.js";
+import { Clock, Metronome, Piano, Review, Stopwatch, Volume, Wink } from "./tool.js";
 export { Panel, panels, EditPanel, ScreenPanel, CurtainPanel };
 
 // -skip
@@ -700,6 +700,11 @@ for more details.</p>
           <a href="https://github.com/foliojs/fontkit">fontkit.js</a> Version 1.1.1<br>
           Author: Devon Govett<br>
           MIT LICENSE
+        </div><div class="Credit">
+          <a href="https://ai.google.dev/edge/mediapipe">MediaPipe Tasks Vision</a> Version 1.1.1<br>
+          and the Face Landmarker model, for Wink page turning<br>
+          © The MediaPipe Authors<br>
+          APACHE LICENSE Version 2.0
         </div><div class="Credit">
           <a href="https://fonts.google.com/specimen/Patrick+Hand">Patrick Hand Regular</a> Version 1.1.1<br>
           © 2010-2012 Patrick Wagesreiter<br>
@@ -2517,6 +2522,46 @@ class ReviewPanel extends Panel {
 
 }
 
+/**
+class WinkPanel
+
+  Where the wink page-turner gets aimed and measured.
+
+  Unlike every other tool panel, closing this one does not put its device out:
+  the camera belongs to WinkTurner, and the point of the whole feature is to
+  set it up here, close the panel, and go and play with the ring in the corner
+  still watching. So close() only stops the panel watching the turner -- which
+  also means a panel opened a second time has to draw itself from whatever the
+  turner is doing by then, rather than from an assumption that it is off.
+**/
+class WinkPanel extends Panel {
+  constructor(cell) {
+    super(cell);
+    this.wink = new Wink(this);
+    this.body.replaceWith(this.wink.elm);
+    delay(2, () => this.wink.build());
+  }
+
+  show(onShown = null) {
+    super.show(onShown);
+    delay(2, () => this.wink.refresh());
+    return this;
+  }
+
+  close() {
+    // Mark closed immediately, before the panel's delayed destruction: the
+    // tool awaits a camera and a 17 MB model, either of which can land after
+    // this.
+    this.wink.closed = true;
+    super.close();
+  }
+
+  destructor() {
+    super.destructor();
+    this.wink.destructor();
+  }
+}
+
 class VolumePanel extends Panel {
   constructor(cell) {
     super(cell);
@@ -3907,4 +3952,5 @@ let panels = window._panels_ = {
   VerticalPanel,
   CurtainPanel,
   VolumePanel,
+  WinkPanel,
 };

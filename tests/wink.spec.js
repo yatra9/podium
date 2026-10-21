@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 
 const LIMITS = {
   closed: 0.7, open: 0.3, showMs: 100, fireMs: 400,
-  cooldownMs: 800, restMs: 400, fpsMin: 7,
+  cooldownMs: 800, restMs: 400, fpsMin: 7, gapMs: 250,
 };
 
 // A run of frames at a steady rate. Each span is a stretch of time the face
@@ -254,6 +254,28 @@ test("a wink is not believed until the eyes have rested", async ({ page }) => {
   const verdicts = await play(page, [{ ms: 800, left: 0.05, right: 0.9 }]);
 
   expect(turns(verdicts)).toEqual([]);
+});
+
+test("a wink cannot be held through a stall", async ({ page }) => {
+  // Held time comes from the clock, not from a count of frames, so a gap in
+  // the frames is the one way a gesture can appear to have been held for
+  // longer than it was. A backgrounded tab, a big page being rendered, the
+  // model losing its GPU context: the clock runs on through all of them, and
+  // what the eye did meanwhile is simply not known.
+  //
+  // So: 150ms of wink, a stall, then 150ms more. Neither half is long enough
+  // to turn a page, and the two together must not be either.
+  const before = frames([settled, { ms: 150, left: 0.05, right: 0.9 }]);
+  const after = frames([{ ms: 150, left: 0.05, right: 0.9 }], { t0: 4000 });
+  const verdicts = await page.evaluate(([samples, limits]) => {
+    const judge = new window._WinkJudge_(limits);
+    return samples.map(sample => judge.feed(sample));
+  }, [[...before, ...after], LIMITS]);
+
+  expect(verdicts.filter(v => v.turn)).toEqual([]);
+  // And the gesture starts over rather than carrying on, so the frame after
+  // the stall is back to idle however long the eye had been shut.
+  expect(verdicts[before.length].state).toBe("idle");
 });
 
 test("head rotation is read out of the model's matrix in degrees", async ({ page }) => {

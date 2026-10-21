@@ -332,9 +332,31 @@ async function main() {
 
   new Gestures();
 
+  /**
+      Turn the page the way a page-turner asks for it: the one road into the
+      layout for every hands-free way of asking.
+
+      @how is "next", "prev", "first" or "last". @marks forces the move to go
+      by bookmark rather than by page; "next" and "prev" also go by bookmark
+      when the score's Numbers settings say they should, so a wink and a pedal
+      and an arrow key all do the same thing as each other on the same score.
+
+      Answers whether there was anything to turn, so a caller that has shown
+      the reader something -- the wink gauge filling, say -- can tell them the
+      ask went nowhere.
+   **/
+  window._turnPage_ = (how, marks = false) => {
+    let layout = Layout.activeLayout;
+    if (!layout || !_score_) return false;
+    let by = how == "next" ? _score_?.numbers?.forward
+      : how == "prev" ? _score_?.numbers?.reverse : null;
+    layout.pgOpen(how, marks || by == "Marks");
+    return true;
+  };
+
   {
     /**
-        This block implements keyboard events. They are primarily used to implement external page-turning 
+        This block implements keyboard events. They are primarily used to implement external page-turning
         devices, but of course they work from regular keyboards as well.
      **/
     let pedalKeys = ['ArrowRight', 'ArrowLeft', 'ArrowUp', 'ArrowDown', 'PageUp', 'PageDown', 'Home', 'End'];
@@ -369,28 +391,22 @@ async function main() {
         lastPedalTime = now;
         e.preventDefault();
         e.stopPropagation();
-        let layout = Layout.activeLayout;
-        if (!layout || !_score_) return;
-        let forward = _score_.numbers.forward ;
-        let reverse = _score_?.numbers?.reverse
-        let forwardBookMarks = e.ctrlKey || forward == "Marks";
-        let reverseBookMarks = e.ctrlKey || reverse == "Marks";
         switch (e.code) {
           case "ArrowLeft":
           case "ArrowUp":
           case "PageUp":
-            layout.pgOpen("prev", reverseBookMarks);
+            _turnPage_("prev", e.ctrlKey);
             break;
           case "ArrowRight":
           case "ArrowDown":
           case "PageDown":
-            layout.pgOpen("next", forwardBookMarks);
+            _turnPage_("next", e.ctrlKey);
             break;
           case "Home":
-            layout.pgOpen("first", e.ctrlKey);
+            _turnPage_("first", e.ctrlKey);
             break;
           case "End":
-            layout.pgOpen("last", e.ctrlKey);
+            _turnPage_("last", e.ctrlKey);
             break;
           default:
             return;

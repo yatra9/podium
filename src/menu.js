@@ -834,6 +834,36 @@ class Menu {
           svgPath: iconPaths["Keyboard"],
           stash: {},
         },
+        wink: {
+          name: "Wink",
+          svgPath: iconPaths["Wink"],
+          // Turning the page by holding one eye shut. Every number here is a
+          // guess until it has been measured on a player with an instrument at
+          // their lips, which is what the panel's recording is for; see
+          // WINK_LIMITS in wink.js for what each of them means.
+          stash: {
+            // "Turn" moves the page when the gauge fills; "Hold" fills the
+            // gauge and leaves the page alone, for trying the gesture out
+            // against a score without losing your place in it.
+            turn: "Turn",
+            // Which eye goes on, and whether the other one goes back at all:
+            // a player who can only wink one eye still gets the page forward,
+            // and forward is the one that matters.
+            sides: "Right On",
+            back: "Back On",
+            place: "Low Right",
+            device: "",  // the camera, by id; empty for whichever faces the player
+            closed: 0.7,
+            open: 0.3,
+            showMs: 100,
+            fireMs: 400,
+            cooldownMs: 800,
+            restMs: 400,
+            yawMax: 32,
+            pitchMax: 28,
+            rollMax: 24,
+          },
+        },
         volume: { name: "Volume", svgPath: iconPaths["Volume"], stash: { volume:1}, },
       },
       name: "More",
