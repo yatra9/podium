@@ -247,11 +247,16 @@ if __name__ == '__main__':
 #
 # The glyph set is defined by JIS X 0208 rather than by hand: its non-kanji rows
 # (ku 1-8) give the kana, the Japanese punctuation, and Greek and Cyrillic for
-# free, and level 1 (ku 16-47) gives the 2,965 kanji in ordinary use. Level 2
-# (ku 48-84) is deliberately left out; it would roughly double the download, and
-# score.js warns about any character it cannot show rather than dropping it
-# quietly. WinAnsi's own repertoire is added so that switching away from a
-# standard font can never lose a character that font could have shown.
+# free, level 1 (ku 16-47) gives the 2,965 kanji in ordinary use, and level 2
+# (ku 48-84) the 3,390 rarer ones -- largely the characters of personal and
+# place names, which is where the text written on a score tends to need them.
+# Level 2 doubles the font, 674 KB to 1.4 MB, and a little over a megabyte of
+# the app's download once base64 has had its way: the price of a performer's
+# name not coming out as a row of boxes. score.js still warns about any
+# character the font cannot show rather than dropping it quietly, since JIS X
+# 0208 is not all of Japanese. WinAnsi's own repertoire is added so that
+# switching away from a standard font can never lose a character that font
+# could have shown.
 NOTO_JP_PRISTINE = 'lib/NotoSansJP-Regular.otf'
 
 # Exactly what pdf-lib's standard fonts accept, read out of pdf-lib itself by
@@ -287,6 +292,7 @@ def noto_jp_codepoints():
     cps = {cp for lo, hi in WINANSI_RANGES for cp in range(lo, hi + 1)}
     cps |= jis_x_0208(1, 8)    # kana, punctuation, Greek, Cyrillic, symbols
     cps |= jis_x_0208(16, 47)  # level 1 kanji
+    cps |= jis_x_0208(48, 84)  # level 2 kanji
     return sorted(cps)
 
 

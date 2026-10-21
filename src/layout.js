@@ -323,6 +323,12 @@ class Layout {
 
   place() {
     // Put the layout where a fresh open would have landed it, instantly.
+    // Instantly means dropping any transition first: a reader who pinches and
+    // double-taps while the layout is still flying out of its menu cell would
+    // otherwise have the snap glide, the flight's transition still being on the
+    // element. (The interrupted flight passes no finalize, so nothing is
+    // stranded by the transitionend that now never comes.)
+    this.elm.style.transition = "unset";
     // centerLT measures the built layout, so the font size has to be settled
     // first -- and settled it is, at 1em, since the fit is carried by the em
     // geometry rather than by the scale it is drawn at.
@@ -2427,6 +2433,7 @@ class TableLayout extends Layout {
     // buildAux has already applied the fit, and expresses a Height fit as a
     // font size of its own, so this is the one layout that must keep the size
     // it was given rather than reset to 1em: only the centring is left.
+    this.elm.style.transition = "unset";   // see Layout.place
     reflow();
     Object.assign(this.elm.style, this.centerLT());
   }

@@ -49,8 +49,8 @@ export { Grid, Pg, Score };
 
 
 // The bundled font that has Japanese glyphs. See build_font.py for the glyph
-// set: JIS X 0208's non-kanji rows, its level 1 kanji, and WinAnsi's repertoire
-// so far as the pristine font has it -- being a Japanese language subset, it
+// set: JIS X 0208's non-kanji rows, its level 1 and level 2 kanji, and WinAnsi's
+// repertoire so far as the pristine font has it -- being a Japanese subset, it
 // lacks S-caron, Z-caron, Y-diaeresis and the two spacing accents, which is why
 // resolveTextFont compares the two fonts instead of assuming one contains the
 // other.
