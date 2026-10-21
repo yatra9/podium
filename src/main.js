@@ -128,6 +128,11 @@ class Gestures {
         ScreenPanel.update(this.tr1.pz);
       if (e.ctrlKey) { this.startCtrlPan(e); return; }
       if (e.target === _body_) _body_.setPointerCapture(e.pointerId);
+      // A page-number band answers for a strip of the margin just outside it,
+      // where the window has room to spare: see Pager.claim(). Offered here
+      // because out there the press lands on the background, and nothing else
+      // would think to ask the band about it.
+      if (e.target === _body_) Layout.activeLayout?.pagerClaim(e);
       this.watch(e);
       return;
     }
@@ -142,7 +147,7 @@ class Gestures {
 
   watch(e) {
     let onBody = e.target === _body_;
-    let gestureDelta = Math.min(innerWidth, innerHeight) * 0.15;
+    let gestureDelta = _swipeDelta_();
     let cancelDelta = 16;
     this.timer.run(_gs_, () => {
       // when e.taken == true, the long-press timer is a no-op.
@@ -164,7 +169,10 @@ class Gestures {
     listen(_body_, "pointerup", eup => {
       unlisten(mv);
       this.timer.cancel();
-      if (!onBody) return;   // swipe gestures only from background
+      // Swipe gestures only from the background -- and not from the strip of it
+      // that a page-number band down the sides answers for, where the swipe and
+      // the band's own scrubbing are the same movement and only one can win.
+      if (!onBody || e.swipeTaken) return;
       let dY = eup.clientY - e.clientY;
       if (Math.abs(dY) > gestureDelta) {
         if (dY < 0) // bottom->top (swipe up): toggle the menu (center/expand <-> park)
