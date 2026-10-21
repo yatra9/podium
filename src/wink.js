@@ -265,6 +265,12 @@ class WinkJudge {
       this.rested = false;
     }
     if (rest) this.rested = true;
+    // Both eyes out of the open band is a blink, and it spends the rest that
+    // came before it: a wink that starts in the recovery of a blink is more
+    // likely to be the blink. One eye leaving that band must not spend it,
+    // because that is how every wink begins -- the lid passes through the
+    // middle of the range on its way down.
+    else if (this.restWhy == "eyes-shut") this.rested = false;
     this.ready = this.track && rest;
     // The most fundamental complaint wins: being told the eyes are shut is no
     // use to a player whose face is not in the frame at all.
@@ -279,6 +285,11 @@ class WinkJudge {
       this.state = "cooldown";
       this.direction = null;
       this.progress = 0;
+      // Not ready, whatever the eyes are doing: a wink made now is thrown
+      // away, and a ring that went green to say otherwise would be inviting
+      // the player to make one.
+      this.ready = false;
+      this.why = "cooling";
       return this.verdict(null);
     }
 
@@ -326,6 +337,9 @@ class WinkJudge {
     this.firedAt = t;
     this.state = "cooldown";
     this.progress = 1;
+    // The cooldown starts on this frame, not the next one, so it says so from
+    // here: every frame in that state gives the same reason.
+    this.why = "cooling";
     let turn = this.direction;
     this.direction = null;
     return this.verdict(turn);
@@ -494,7 +508,6 @@ class WinkWatch {
           return FaceLandmarker.createFromOptions(fileset, this.markerOptions("CPU"));
         });
       if (!mine()) { marker.close(); return false; }
-      this.marker = marker;
 
       this.say("loading", "Opening the camera");
       let stream = await navigator.mediaDevices.getUserMedia({
@@ -504,16 +517,27 @@ class WinkWatch {
           width: { ideal: 640 }, height: { ideal: 480 },
         },
       });
-      if (!mine()) { stream.getTracks().forEach(track => track.stop()); return false; }
-      this.stream = stream;
+      // Everything this attempt made, let go of. Not stop(): by the time a
+      // cancelled attempt gets here the fields may belong to a newer one, and
+      // stop() would put out its camera and cancel it in turn.
+      let abandon = () => {
+        marker.close();
+        stream.getTracks().forEach(track => track.stop());
+      };
+      if (!mine()) { abandon(); return false; }
 
-      let video = this.video = document.createElement("video");
+      let video = document.createElement("video");
       video.muted = true;
       video.playsInline = true;
       video.srcObject = stream;
       await video.play();
-      if (!mine()) { this.stop(); return false; }
+      if (!mine()) { video.srcObject = null; abandon(); return false; }
 
+      // Nothing is published until every await has landed, so a cancelled
+      // attempt never has anything of the turner's to tidy up.
+      this.marker = marker;
+      this.stream = stream;
+      this.video = video;
       this.judge.reset();
       // Not the target rate: the first detection compiles shaders and can take
       // a second or more, and claiming a rate before one has been measured
@@ -943,7 +967,10 @@ class WinkTurner {
     this.hud = null;
     this.log = null;
     this.recording = false;
-    this.turns = 0;      // pages this watch has turned, for the panel to show
+    // Winks this watch has acted on, for the panel to show. Not pages moved:
+    // the layout takes the ask from here and may decline it, there being no
+    // page past the last one.
+    this.asks = 0;
     this.watchers = new Set();
   }
 
@@ -1035,7 +1062,7 @@ class WinkTurner {
       // Reached through window, not as a bare name: this runs from a video
       // frame callback, and a ReferenceError there would be swallowed as a
       // console line in a build where main.js had not set it.
-      if (this.stash.turn != "Hold" && window._turnPage_?.(verdict.turn)) this.turns++;
+      if (this.stash.turn != "Hold" && window._turnPage_?.(verdict.turn)) this.asks++;
     }
     this.tell("frame", sample, verdict);
   }

@@ -162,6 +162,84 @@ test("turning Wink off puts the camera out", async ({ page }) => {
   expect(off).toEqual({ state: "ended", running: false, status: "off", seen: 0 });
 });
 
+test("a start cancelled part way does not put out the one that replaced it", async ({ page }) => {
+  test.skip(!fs.existsSync(modelFile), "lib/mediapipe is missing; run fetch-wink-assets.sh");
+  // Starting up is a run of awaits -- the model, then the camera, then the
+  // video -- and the reader can turn Wink off and on again during any of
+  // them. The attempt that was cancelled has to let go of only what it made
+  // itself: tidying up through the shared stop() would put out the camera of
+  // the attempt that replaced it, and leave Wink off with its button saying
+  // it was on.
+  await page.goto("/podium.html");
+  await page.waitForFunction(() => !!window._menu_?.rings?.more?.cells?.wink);
+
+  const race = await page.evaluate(async () => {
+    const turner = window._WinkTurner_.it;
+    const cancelled = turner.on();
+    turner.off();
+    const kept = await turner.on();
+    // Let the cancelled attempt finish unwinding, which is when it would do
+    // the damage.
+    const stale = await cancelled;
+    await new Promise(done => setTimeout(done, 800));
+    return {
+      kept, stale, running: turner.running, status: turner.status,
+      live: turner.watch.stream?.getVideoTracks()[0]?.readyState,
+      cameras: turner.watch.stream?.getVideoTracks().length,
+    };
+  });
+
+  expect(race.stale).toBe(false);
+  expect(race.kept).toBe(true);
+  expect(race.running).toBe(true);
+  expect(race.status).toBe("on");
+  expect(race.live).toBe("live");
+  expect(race.cameras).toBe(1);
+  // And it is really still reading frames, not merely holding a stream.
+  const { seen } = await watched(page, 2000);
+  expect(seen).toBeGreaterThan(0);
+});
+
+test("Mark has nothing to say unless a recording is running", async ({ page }) => {
+  test.skip(!fs.existsSync(modelFile), "lib/mediapipe is missing; run fetch-wink-assets.sh");
+  // Pressing Mark is the reader saying "that wink was deliberate". With no
+  // recording running there is no frame to say it about, and a stopped
+  // recording would take the mark to the first frame of whenever it next
+  // starts -- some unrelated moment, mislabelled in the CSV.
+  await start(page);
+  await watched(page, 1200);
+
+  const marks = await page.evaluate(async () => {
+    const wink = window._panels_.wink.wink;
+    const turner = window._WinkTurner_.it;
+    const press = () => wink.recordGroup.handler(
+      new Event("pointerup"), "mark", "Mark", wink.view, null);
+
+    wink.refresh();
+    const idle = wink.recordGroup.defs.Mark.disabled;
+    press();
+    const afterIdle = turner.log?.marked ?? 0;
+
+    turner.record(true);
+    await new Promise(done => setTimeout(done, 600));
+    wink.refresh();
+    const taping = wink.recordGroup.defs.Mark.disabled;
+    press();
+    const afterTaping = turner.log.marked;
+
+    turner.record(false);
+    wink.refresh();
+    return { idle, afterIdle, taping, afterTaping,
+             stopped: wink.recordGroup.defs.Mark.disabled };
+  });
+
+  expect(marks.idle).toBe(true);
+  expect(marks.afterIdle).toBe(0);
+  expect(marks.taping).toBe(false);
+  expect(marks.afterTaping).toBe(1);
+  expect(marks.stopped).toBe(true);
+});
+
 test("a recording keeps every score the model read, and no picture", async ({ page }) => {
   test.skip(!fs.existsSync(modelFile), "lib/mediapipe is missing; run fetch-wink-assets.sh");
   await start(page);
@@ -263,14 +341,14 @@ test("a finished wink turns the page the way a pedal does", async ({ page }) => 
     await new Promise(done => setTimeout(done, _gs_ * 3));
     const held = at();
 
-    return { first, onward, back, held, turns: turner.turns };
+    return { first, onward, back, held, asks: turner.asks };
   });
 
   expect(turned.onward).toBeGreaterThan(turned.first);
   expect(turned.back).toBe(turned.first);
   expect(turned.held).toBe(turned.first);
-  // Only the two that moved the page were counted as turns.
-  expect(turned.turns).toBe(2);
+  // Only the two that were acted on were counted; "Hold" asks for nothing.
+  expect(turned.asks).toBe(2);
 });
 
 test("every hands-free way of asking for a page goes down one road", async ({ page }) => {

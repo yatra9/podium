@@ -256,6 +256,60 @@ test("a wink is not believed until the eyes have rested", async ({ page }) => {
   expect(turns(verdicts)).toEqual([]);
 });
 
+test("a wink in the recovery of a blink is treated as the blink", async ({ page }) => {
+  // This is what restMs is for. A blink spends the rest that came before it,
+  // so the wink that follows has to wait for a rest of its own -- otherwise
+  // "blink, then hold one eye" reads as a deliberate wink, which is the
+  // commonest thing a face does by accident.
+  const verdicts = await play(page, [
+    settled,
+    { ms: 150, left: 0.95, right: 0.95 },
+    { ms: 500, left: 0.05, right: 0.9 },
+  ]);
+
+  expect(turns(verdicts)).toEqual([]);
+  // And once the eyes have rested again, the same wink counts.
+  expect(turns(await play(page, [
+    settled,
+    { ms: 150, left: 0.95, right: 0.95 },
+    { ms: 600, left: 0.05, right: 0.05 },
+    { ms: 500, left: 0.05, right: 0.9 },
+  ]))).toEqual(["next"]);
+});
+
+test("the lid passing through the middle of its range still begins a wink", async ({ page }) => {
+  // The other side of the test above: an eye on its way shut is briefly
+  // neither open nor closed, and that must not be read as spending the rest,
+  // or no wink could ever start.
+  const verdicts = await play(page, [
+    settled,
+    { ms: 80, left: 0.05, right: 0.5 },
+    { ms: 500, left: 0.05, right: 0.9 },
+  ]);
+
+  expect(turns(verdicts)).toEqual(["next"]);
+});
+
+test("the ring does not say ready while the cooldown is running", async ({ page }) => {
+  // A green ring means "wink now and it will count". During the cooldown a
+  // wink is thrown away, so saying ready would be inviting the player to make
+  // one for nothing -- and to conclude the whole feature is unreliable.
+  const verdicts = await play(page, [
+    settled,
+    { ms: 500, left: 0.05, right: 0.9 },
+    { ms: 900, left: 0.05, right: 0.05 },
+  ]);
+
+  const fired = verdicts.findIndex(v => v.turn);
+  expect(fired).toBeGreaterThan(-1);
+  const cooling = verdicts.filter(v => v.state == "cooldown");
+  expect(cooling.length).toBeGreaterThan(1);
+  expect(cooling.every(v => v.ready == false)).toBe(true);
+  expect(cooling.every(v => v.why == "cooling")).toBe(true);
+  // And once it has passed, the ring comes back.
+  expect(verdicts.at(-1).ready).toBe(true);
+});
+
 test("a wink cannot be held through a stall", async ({ page }) => {
   // Held time comes from the clock, not from a count of frames, so a gap in
   // the frames is the one way a gesture can appear to have been held for

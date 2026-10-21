@@ -341,9 +341,10 @@ async function main() {
       when the score's Numbers settings say they should, so a wink and a pedal
       and an arrow key all do the same thing as each other on the same score.
 
-      Answers whether there was anything to turn, so a caller that has shown
-      the reader something -- the wink gauge filling, say -- can tell them the
-      ask went nowhere.
+      Answers whether there was a score and a layout to ask at all -- not
+      whether the page moved. The layout takes it from here, asynchronously,
+      and may well decline: there is no page past the last one, and a turn
+      already in flight is left to finish.
    **/
   window._turnPage_ = (how, marks = false) => {
     let layout = Layout.activeLayout;
