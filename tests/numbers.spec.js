@@ -14,7 +14,9 @@ test.skip(!fs.existsSync(pageFile), "build/podium.html is missing; run build.py 
 // settled by the height, so a band across the ends costs page size and a band
 // down the sides is free. (Portrait trades the two round -- the point of the
 // setting -- but one orientation is enough to pin the arithmetic down.)
-test.use({ viewport: { width: 1280, height: 720 } });
+test.use({ viewport: { width: 1280, height: 720 }, hasTouch: true });
+
+const GS = 618;
 
 const LAYOUTS = ["book", "horizontal", "vertical"];
 
@@ -106,6 +108,45 @@ for (const key of LAYOUTS) {
     const legacy = key == "vertical" ? ["top", "bottom"] : ["left", "right"];
     expect([on.first.at, on.last.at], key).toEqual(legacy);
     expect([on.first.thick, on.last.thick], key).toEqual([45, 45]);
+  });
+}
+
+for (const axis of ["L-R", "T-B"]) {
+  test(`a band over the pages still answers the finger, ${axis} in Book`, async ({ page }) => {
+    // Book's spine carries a z-index, so bands drawn over the pages sat under
+    // them: a finger on a band turned the page it was lying on instead of
+    // scrubbing to the page it was pointing at. The scrolls never showed it --
+    // their bands have always been given a z-index of their own.
+    await page.evaluate(() => { window._menu_.rings.score.cells.new.stash.pgCount = 8; });
+    await page.evaluate(() => window._menu_.notify("score/new/up"));
+    await expect.poll(() => page.evaluate(() => !!window._score_), { timeout: 30_000 }).toBe(true);
+
+    const band = await page.evaluate(async (axis) => {
+      const Layout = window._Layout_;
+      const cell = window._menu_.rings.layout.cells.book;
+      Object.assign(cell.stash, { pnShow: axis, pnPlace: "Over", pz: null });
+      await Layout.open(cell);
+      await new Promise(done => setTimeout(done, _gs_ * 3));
+      await Layout.activeLayout.pgGoTo(1);
+      await new Promise(done => setTimeout(done, _gs_ * 2));
+      const box = Layout.activeLayout.pagerLeft.elm.getBoundingClientRect();
+      return { x: box.x, y: box.y, width: box.width, height: box.height };
+    }, axis);
+
+    // Three quarters along the band, which in an eight page score is page six
+    // or thereabouts; a page turn from page one could only reach page two.
+    const at = axis == "L-R"
+      ? { x: band.x + band.width / 2, y: band.y + band.height * 0.75 }
+      : { x: band.x + band.width * 0.75, y: band.y + band.height / 2 };
+    const cdp = await page.context().newCDPSession(page);
+    const touch = [{ ...at, id: 1 }];
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: touch });
+    await page.waitForTimeout(30);
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+    await page.waitForTimeout(GS * 3);
+    await cdp.detach();
+
+    expect(await page.evaluate(() => _score_.numbers.pn), axis).toBeGreaterThan(3);
   });
 }
 

@@ -1130,7 +1130,10 @@ class BookLayout extends Layout {
 
     // pagers. The left page's number goes above the right page's when the bands
     // move to the ends, which is the only reading of top and bottom that keeps
-    // the pages' own order.
+    // the pages' own order. They stack above the spine, which carries a z-index
+    // of its own: drawn over the pages they would otherwise be under them, and
+    // a finger on a band would turn the page instead of scrubbing to one.
+    this.pagerLeft.elm.style.zIndex = this.pagerRight.elm.style.zIndex = 20;
     // With the numbers off the bands keep the edges they would have had: hidden
     // is not gone, and they still answer a finger that lands on them.
     let ends = (this.pnAxis() ?? this.pnDefaultAxis) == "T-B";
