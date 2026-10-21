@@ -731,6 +731,8 @@ for more details.</p>
           <div>Version ${_podiumVersion_}</div>
           <a style="font-size:.6em;" href="https://studiop5.org/releaseNotes.html#v${_podiumVersion_}">Release Notes</a>
           <div style="font-size:.6em;color:#888;margin-top:0.5em;">${typeof chrome !== "undefined" && chrome.runtime?.id ? "Browser Extension" : window.matchMedia("(display-mode: standalone)").matches ? "Progressive Web App" : location.protocol + "//" + location.host}</div>
+          <div style="font-size:.6em;color:#888;" translate="no">Build ${_podiumBuild_}</div>
+          ${this.commitLines()}
         </div>
         <div style="font-size:1.2em;text-align:center;font-variant-emoji:text;margin-top:2em;line-height:1.6em;">
           <a href="https://studiop5.org/privacy.html">\u{1F6E1} Privacy</a>&nbsp;
@@ -741,6 +743,24 @@ for more details.</p>
      </div>`
   );
 
+
+  commitLines() {
+    // The build date narrows a build down; the commit names it. Both lengths of
+    // it: the short hash is what a person reads and quotes, the whole one is what
+    // a tool is given, and it is left selectable so it can be copied off a
+    // tablet. "dirty" says the build carried uncommitted changes and so is not
+    // fully described by its hash (see git_commit() in build.py). The hash is
+    // only shown as one when it looks like one: an unstamped build says "dev".
+    let dirty = _podiumCommit_.endsWith("-dirty");
+    let hash = dirty ? _podiumCommit_.slice(0, -"-dirty".length) : _podiumCommit_;
+    let line = (text, style = "") =>
+      `<div style="font-size:.6em;color:#888;${style}" translate="no">${text}</div>`;
+    if (!/^[0-9a-f]{7,}$/.test(hash)) return line(`Commit ${_podiumCommit_}`);
+    return (
+      line(`Commit ${hash.slice(0, 8)}${dirty ? "-dirty" : ""}`) +
+      line(hash, "user-select:text;-webkit-user-select:text;word-break:break-all;")
+    );
+  }
 
   constructor(cell) {
     super(cell);
@@ -1105,9 +1125,8 @@ class OpenPanel extends FilePanel {
     super(cell);
     this.mode = "open";
     // Filter out WWW - it's a source type but not a file browser tab
-    const isExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
     const fileSources = Object.entries(Score.sources)
-      .filter(([key]) => key !== "url" && (key !== "pcloud" || isExtension))
+      .filter(([key]) => key !== "url")
       .map(([, value]) => value);
     this.tabView = new TabView(this, "Recent", ...fileSources);
     this.body.append(this.tabView.elm);
@@ -1163,9 +1182,8 @@ class SavePanel extends FilePanel {
     super(cell);
     this.mode = "save";
     // Filter out WWW (url source)
-    const isExtension = typeof chrome !== "undefined" && chrome.runtime?.id;
     const fileSources = Object.entries(Score.sources)
-      .filter(([key]) => key !== "url" && (key !== "pcloud" || isExtension))
+      .filter(([key]) => key !== "url")
       .map(([, value]) => value);
     this.tabView = new TabView(this, ...fileSources);
     this.body.append(this.tabView.elm);
@@ -1271,9 +1289,74 @@ class GridPanel extends Panel {
 }
 
 class GuidePanel extends Panel {
-  static guidebookUrl = typeof chrome !== "undefined" && chrome.runtime?.id
-    ? `https://studiop5.org/Guidebook.html`
-    : `Guidebook.html`;
+  // Which guidebooks exist depends on how Podium was deployed. The web app
+  // publishes the English one beside the page, where a relative URL keeps it
+  // same-origin; a static-host deployment carries whichever translations were
+  // built into it; the extension and a page saved to disk carry none, and have
+  // to borrow the published copy (which is served with "frame-ancestors *", so
+  // it will embed). An absence has to be found before the iframe is pointed at
+  // it: a 404 body fires the load event just as a guidebook would, and would be
+  // displayed in its place.
+  // In preference order: a deployment that carries a translation leads with it,
+  // and English is what every deployment can always reach.
+  static localNames = { ja: "Guidebook.ja.html", en: "Guidebook.html" };
+  static publishedUrl = `https://studiop5.org/Guidebook.html`;
+  static isExtension = typeof chrome !== "undefined" && !!chrome.runtime?.id;
+  // Shown on the button that switches away from the language being read, so it
+  // names where the tap goes rather than where it already is.
+  static labels = { ja: "日本語", en: "EN" };
+  static preference = "podium-guide-language";
+  static urls = null;
+
+  static css = css(
+    "GuidePanel",
+    `.GuidePanel__switcher {
+       position: absolute;
+       top: 0;
+       right: 3em;      /* the closer has the corner */
+       width: 3.4em;
+       /* The containing block is the panel, not the header (which is not
+          positioned), so the header's own 3em has to be repeated here -- as the
+          icon, title and closer all do. A percentage would take the height of
+          the whole panel and centre the label in the middle of the guidebook. */
+       height: 3em;     /* the full header, so the tap target is a finger wide */
+       display: flex;
+       align-items: center;
+       justify-content: center;
+       color: var(--color-text);
+     }
+     .GuidePanel__switcher > span {
+       font-size: 0.7em;
+       font-weight: bold;
+       white-space: nowrap;
+       padding: 0.3em 0.5em;
+       border: 0.1em solid currentColor;
+       border-radius: 0.3em;
+       opacity: 0.7;
+     }
+     .GuidePanel__switcher:hover > span { opacity: 1; }
+  `
+  );
+
+  static async resolveUrls() {
+    // @return the real URL of each guidebook this deployment can show, keyed by
+    //   language. English always has one, falling back to the published copy.
+    if (this.urls) return this.urls;
+    if (this.isExtension) return this.urls = { en: this.publishedUrl };
+    let urls = {};
+    for (let [language, name] of Object.entries(this.localNames)) {
+      let url = new URL(name, location.href).href;
+      // A 404 is an answer and is remembered. A fetch that fails outright is
+      // not: being offline, or on file:// where fetching a sibling is
+      // forbidden, would otherwise pin the published copy for the rest of the
+      // session -- even on the site that publishes its own guidebook.
+      let found = await fetch(url, { method: "HEAD" }).then(r => r.ok, () => null);
+      if (found === null) return { en: this.publishedUrl };
+      if (found) urls[language] = url;
+    }
+    urls.en ??= this.publishedUrl;
+    return this.urls = urls;
+  }
 
   content = helm(
     `<div style="padding:0;width:100%;height:100%;box-sizing:border-box;overflow:hidden;position:relative;">
@@ -1297,27 +1380,81 @@ class GuidePanel extends Panel {
     this.iframe = this.content.querySelector("iframe");
     this.msg = this.content.querySelector(".guide-msg");
     this.fetched = false;
+
+    // The title bar belongs to Podium, not to the iframe, so the language
+    // switch goes there: the guidebook keeps its whole panel, and the control
+    // is in the same place whichever document is loaded. It stays hidden until
+    // resolveUrls() finds a second language to switch to.
+    this.switcher = helm(`<div class="GuidePanel__switcher" style="display:none"><span></span></div>`);
+    this.switcherLabel = this.switcher.querySelector("span");
+    this.closer.before(this.switcher);
+    this.listeners.push(
+      // The header's own pointerdown drags the panel and double-tap-closes it,
+      // so this has to be taken first -- the same bargain the closer strikes.
+      listen(this.switcher, "pointerdown", (e) => {
+        e.stopPropagation();
+        e.taken = true;
+        this.setLanguage(this.other());
+      })
+    );
+  }
+
+  other() {
+    return Object.keys(this.urls ?? {}).find(language => language != this.language);
+  }
+
+  setLanguage(language) {
+    let url = this.urls?.[language];
+    if (!url) return;
+    this.language = language;
+    localStorage.setItem(GuidePanel.preference, language);
+    let other = this.other();
+    this.switcher.style.display = other ? "" : "none";
+    if (other) {
+      this.switcherLabel.textContent = GuidePanel.labels[other];
+      this.switcher.title = `Read the guidebook in ${other == "ja" ? "Japanese" : "English"}`;
+    }
+    if (this.iframe.src == url) return;
+    // Only the published copy needs the network, and only it can be defeated by
+    // being offline. The probe has already failed by then, so this is the one
+    // place that can say so.
+    if (url == GuidePanel.publishedUrl && !navigator.onLine) {
+      this.iframe.style.display = "none";
+      this.msg.style.display = "flex";
+      this.msg.textContent = "That guidebook is not available offline.";
+      return;
+    }
+    this.iframe.style.display = "none";
+    this.msg.style.display = "flex";
+    this.msg.textContent = "Fetching Guidebook...";
+    listen(this.iframe, "load", () => {
+      this.iframe.style.display = "block";
+      this.msg.style.display = "none";
+    }, { once: true });
+    this.iframe.src = url;
   }
 
   show() {
-    if (typeof chrome !== "undefined" && chrome.runtime?.id) {
+    if (GuidePanel.isExtension) {
       // Extension: open in new tab (cross-origin iframe restrictions prevent embedding)
       if (this.guideWin && !this.guideWin.closed) this.guideWin.focus();
-      else  this.guideWin = window.open(GuidePanel.guidebookUrl, "podium-guidebook");
+      else  this.guideWin = window.open(GuidePanel.publishedUrl, "podium-guidebook");
       return this;
     }
     super.show();
     if (this.fetched) return this;
     this.fetched = true;
     this.msg.textContent = "Fetching Guidebook...";
-    this.iframe.src = GuidePanel.guidebookUrl;
-    listen(this.iframe, "load", () => {
-      this.iframe.style.display = "block";
-      this.msg.style.display = "none";
-    }, { once: true });
-    if (!navigator.onLine) {
-      this.msg.textContent = "Guidebook is not available.";
-    }
+    GuidePanel.resolveUrls().then((urls) => {
+      this.urls = urls;
+      // The reader's last choice wins; failing that, the first language this
+      // deployment has (see localNames, which is in preference order).
+      let language = localStorage.getItem(GuidePanel.preference);
+      if (!urls[language]) language = Object.keys(urls)[0];
+      this.setLanguage(language);
+      if (this.iframe.src) return;
+      this.fetched = false;   // nothing was loaded; try again when next opened
+    });
     return this;
   }
 }
@@ -1464,6 +1601,7 @@ class LayoutPanel extends Panel {
         <div data-tag="bookSliders"></div>
         Numbers<br>
         <div data-tag="pnBook"></div>
+        <div data-tag="pnBookPlace"></div>
        </div>
 
       <div data-tag="horizontalFace" class="Panel__body">
@@ -1472,6 +1610,7 @@ class LayoutPanel extends Panel {
         <div data-tag="fitHorizontalSliders"></div>
         Numbers<br>
         <div data-tag="pnHorizontal"></div>
+        <div data-tag="pnHorizontalPlace"></div>
       </div>
 
       <div data-tag="verticalFace" class="Panel__body">
@@ -1480,6 +1619,7 @@ class LayoutPanel extends Panel {
         <div data-tag="fitVerticalSliders"></div>
         Numbers<br>
         <div data-tag="pnVertical"></div>
+        <div data-tag="pnVerticalPlace"></div>
       </div>
 
       <div data-tag="tableFace" class="Panel__body">
@@ -1506,7 +1646,14 @@ class LayoutPanel extends Panel {
     };
 
     let handler = (e, tag, value, props) => {
+      // A Fit choice discards the remembered pan-zoom: what was asked for is
+      // this fit, not the view that had been pinched into place. The buttons are
+      // redo radios, so re-tapping the fit already chosen comes through here
+      // too -- which is what makes it the way back from a pinch.
+      if (tag == "fit" && _score_ && this.cell == Layout.activeLayout?.cell)
+        return void Layout.activeLayout.refit();
       if (tag == "fit") this.cell.stash.pz = null; // reset pz-set marker so layout will use fit setting
+      if (tag == "band") this.syncPn();
       if (tag == "pace") return; // no rebuild required
       if (_score_ && this.cell == Layout.activeLayout.cell) {
         if(tag == "pgSnap") // no rebuild, but must update
@@ -1560,9 +1707,65 @@ class LayoutPanel extends Panel {
       pace:   { min: 0,  max: 10000, step: 1,   curve: 2,      col: 2, row: 2, msg: msgCallback},
     };
 
+    // Table prints its numbers in each page's corner, so it has no edges to
+    // choose between and keeps the plain On/Off.
     let pnGroupDef = {
       On:  { svg: "Numbers", radio: "pnShow" },
       Off: { svg: "Close",   radio: "pnShow" },
+    };
+
+    // The others carry theirs in a band along two edges. Which pair of edges,
+    // and whether the band takes a strip of its own or lies over the pages, is
+    // the reader's choice: a band is 45px of a dimension the fit may be
+    // fighting for, and the page with the room to spare is not always the same.
+    let pnAxisGroupDef = {
+      Off:   { svg: "Close",       radio: "band" },
+      "L-R": { svg: "Numbers L-R", radio: "band" },
+      "T-B": { svg: "Numbers T-B", radio: "band" },
+    };
+
+    let pnPlaceGroupDef = {
+      Inset: { svg: "Numbers Inset", radio: "place" },
+      Over:  { svg: "Numbers Over",  radio: "place" },
+    };
+
+    // A ButtonGroup reads and writes one named property of the object it is
+    // given, and these two rows are three answers and two answers to what the
+    // stash keeps as pnShow plus one pnBand key (see Layout.normalizePn for why
+    // it is one key). So they are given a view of the stash rather than the
+    // stash itself: Off is the old pnShow, and the edges and the placing are
+    // the band's.
+    let bandView = (cell) => {
+      let stash = Layout.normalizePn(cell);
+      return {
+        get band() { return stash.pnShow == "Off" ? "Off" : stash.pnBand.axis; },
+        set band(tag) {
+          if (tag == "Off") return void (stash.pnShow = "Off");
+          stash.pnShow = "On";
+          stash.pnBand.axis = tag;
+        },
+        get place() { return stash.pnBand.place; },
+        set place(tag) { stash.pnBand.place = tag; },
+      };
+    };
+
+    // ButtonGroup writes to the defs it is given (it marks buttons disabled),
+    // so each face needs defs of its own, down to the per-button objects.
+    let copyDef = (def) =>
+      Object.fromEntries(Object.entries(def).map(([tag, d]) => [tag, { ...d }]));
+
+    // Both rows are redrawn from the stash, which may have arrived from a score
+    // file and been settled by normalizePn since they were last drawn; and the
+    // place row answers a question that does not arise with the numbers off.
+    this.pnBandGroups = {};
+    this.pnPlaceGroups = {};
+    this.syncPn = () => {
+      for (let [key, group] of Object.entries(this.pnPlaceGroups)) {
+        let off = Layout.normalizePn(_menu_.rings.layout.cells[key]).pnShow == "Off";
+        for (let d of Object.values(group.defs)) d.disabled = off;
+        group.refresh();
+        this.pnBandGroups[key].refresh();
+      }
     };
 
     let tableSlidersGroupDef = {
@@ -1581,7 +1784,11 @@ class LayoutPanel extends Panel {
     tags.bookSliders.replaceWith(
       new SliderGroup(stash, bookSlidersGroupDef, handler).elm,
     );
-    tags.pnBook.replaceWith(new ButtonGroup(stash, pnGroupDef, handler).elm);
+    let view = bandView(_menu_.rings.layout.cells.book);
+    this.pnBandGroups.book = new ButtonGroup(view, copyDef(pnAxisGroupDef), handler);
+    tags.pnBook.replaceWith(this.pnBandGroups.book.elm);
+    this.pnPlaceGroups.book = new ButtonGroup(view, copyDef(pnPlaceGroupDef), handler);
+    tags.pnBookPlace.replaceWith(this.pnPlaceGroups.book.elm);
 
     // build horizontal face
     stash = _menu_.rings.layout.cells.horizontal.stash;
@@ -1591,9 +1798,11 @@ class LayoutPanel extends Panel {
     tags.fitHorizontalSliders.replaceWith(
       new SliderGroup(stash, horzSlidersGroupDef, handler).elm,
     );
-    tags.pnHorizontal.replaceWith(
-      new ButtonGroup(stash, pnGroupDef, handler).elm
-    );
+    view = bandView(_menu_.rings.layout.cells.horizontal);
+    this.pnBandGroups.horizontal = new ButtonGroup(view, copyDef(pnAxisGroupDef), handler);
+    tags.pnHorizontal.replaceWith(this.pnBandGroups.horizontal.elm);
+    this.pnPlaceGroups.horizontal = new ButtonGroup(view, copyDef(pnPlaceGroupDef), handler);
+    tags.pnHorizontalPlace.replaceWith(this.pnPlaceGroups.horizontal.elm);
 
     // build vertical face
     stash = _menu_.rings.layout.cells.vertical.stash;
@@ -1603,9 +1812,11 @@ class LayoutPanel extends Panel {
     tags.fitVerticalSliders.replaceWith(
       new SliderGroup(stash, vertSlidersGroupDef, handler).elm
     );
-    tags.pnVertical.replaceWith(
-      new ButtonGroup(stash, pnGroupDef, handler).elm
-    );
+    view = bandView(_menu_.rings.layout.cells.vertical);
+    this.pnBandGroups.vertical = new ButtonGroup(view, copyDef(pnAxisGroupDef), handler);
+    tags.pnVertical.replaceWith(this.pnBandGroups.vertical.elm);
+    this.pnPlaceGroups.vertical = new ButtonGroup(view, copyDef(pnPlaceGroupDef), handler);
+    tags.pnVerticalPlace.replaceWith(this.pnPlaceGroups.vertical.elm);
 
     // build table face
     stash = _menu_.rings.layout.cells.table.stash;
@@ -1614,11 +1825,13 @@ class LayoutPanel extends Panel {
     tags.tableFlowSliders.replaceWith(
       new SliderGroup(stash, tableSlidersGroupDef, handler).elm
     );
-    tags.pnTable.replaceWith(new ButtonGroup(stash, pnGroupDef, handler).elm);
+    tags.pnTable.replaceWith(new ButtonGroup(stash, copyDef(pnGroupDef), handler).elm);
+    this.syncPn();
   }
 
   show() {
     super.show();
+    this.syncPn();
     Object.values(this.faces).forEach((face) => face.remove());
     this.content.append(this.faces[this.cell.key]);
     return this;
@@ -2217,6 +2430,10 @@ class TextPanel extends PencilPanel {
     "Bravura",
     "Vercetti",
     "Patrick Hand",
+    // The only one with Japanese glyphs. Choosing it explicitly makes the
+    // canvas and the saved PDF agree; leave another font selected and score.js
+    // still falls back to this one when it has to, so the text is never lost.
+    "Noto Sans JP",
     ] ;
  
   text = helm(`<div>Abc<br>123<br></div>`);

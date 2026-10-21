@@ -237,3 +237,89 @@ def build_bravura(out_path='build/BravuraText.otf'):
 
 if __name__ == '__main__':
     build_bravura(*sys.argv[1:])
+
+
+# --- Japanese text font ---------------------------------------------------
+# pdf-lib's standard fonts are WinAnsi-encoded, so saving a score with Japanese
+# text fails outright ("WinAnsi cannot encode"). A custom font is worse in its
+# own way: it does not fail, it silently substitutes glyph 0. So Podium ships a
+# Japanese font, subset here because the pristine original is 4.5 MB.
+#
+# The glyph set is defined by JIS X 0208 rather than by hand: its non-kanji rows
+# (ku 1-8) give the kana, the Japanese punctuation, and Greek and Cyrillic for
+# free, level 1 (ku 16-47) gives the 2,965 kanji in ordinary use, and level 2
+# (ku 48-84) the 3,390 rarer ones -- largely the characters of personal and
+# place names, which is where the text written on a score tends to need them.
+# Level 2 doubles the font, 674 KB to 1.4 MB, and a little over a megabyte of
+# the app's download once base64 has had its way: the price of a performer's
+# name not coming out as a row of boxes. score.js still warns about any
+# character the font cannot show rather than dropping it quietly, since JIS X
+# 0208 is not all of Japanese. WinAnsi's own repertoire is added so that
+# switching away from a standard font can never lose a character that font
+# could have shown.
+NOTO_JP_PRISTINE = 'lib/NotoSansJP-Regular.otf'
+
+# Exactly what pdf-lib's standard fonts accept, read out of pdf-lib itself by
+# trying every codepoint through PDFFont.encodeText.
+WINANSI_RANGES = [
+    (0x20, 0x7E), (0xA0, 0xFF), (0x152, 0x153), (0x160, 0x161), (0x178, 0x178),
+    (0x17D, 0x17E), (0x192, 0x192), (0x2C6, 0x2C6), (0x2DC, 0x2DC),
+    (0x2013, 0x2014), (0x2018, 0x201A), (0x201C, 0x201E), (0x2020, 0x2022),
+    (0x2026, 0x2026), (0x2030, 0x2030), (0x2039, 0x203A), (0x20AC, 0x20AC),
+    (0x2122, 0x2122),
+]
+
+
+def jis_x_0208(ku_lo, ku_hi):
+    """The codepoints of JIS X 0208 rows ku_lo..ku_hi.
+
+    EUC-JP encodes the standard as (0xA0 + ku, 0xA0 + ten), so the rows can be
+    enumerated by asking the codec instead of carrying a table that could drift.
+    """
+    out = set()
+    for lead in range(0xA0 + ku_lo, 0xA0 + ku_hi + 1):
+        for trail in range(0xA1, 0xFF):
+            try:
+                ch = bytes([lead, trail]).decode('euc_jp')
+            except UnicodeDecodeError:
+                continue
+            if len(ch) == 1:
+                out.add(ord(ch))
+    return out
+
+
+def noto_jp_codepoints():
+    cps = {cp for lo, hi in WINANSI_RANGES for cp in range(lo, hi + 1)}
+    cps |= jis_x_0208(1, 8)    # kana, punctuation, Greek, Cyrillic, symbols
+    cps |= jis_x_0208(16, 47)  # level 1 kanji
+    cps |= jis_x_0208(48, 84)  # level 2 kanji
+    return sorted(cps)
+
+
+def build_noto_jp(out_path='build/NotoSansJP-subset.otf'):
+    """Subset the pristine Noto Sans JP to Podium's Japanese glyph set."""
+    try:
+        from fontTools.ttLib import TTFont
+        from fontTools.subset import Subsetter, Options
+    except ImportError:
+        sys.exit("build --font needs fontTools:  pip install fonttools")
+
+    os.makedirs('build', exist_ok=True)
+    font = TTFont(NOTO_JP_PRISTINE)
+    o = Options()
+    # notdef_outline keeps the box that marks a character this subset cannot
+    # show, so a missing glyph is visible in the PDF and not just an empty gap.
+    o.notdef_outline = True
+    o.hinting = False
+    # Plain horizontal text needs no shaping, and dropping the features takes a
+    # good deal of weight out of a CJK font. desubroutinize is left off on
+    # purpose: CJK outlines share strokes through subroutines, so inlining them
+    # makes the font substantially bigger.
+    o.layout_features = []
+    o.layout_scripts = []
+    o.drop_tables += ['vhea', 'vmtx', 'VORG']
+    ss = Subsetter(options=o)
+    ss.populate(unicodes=noto_jp_codepoints())
+    ss.subset(font)
+    font.save(out_path)
+    print(f"  built {out_path}: {len(font.getGlyphOrder())} glyphs")

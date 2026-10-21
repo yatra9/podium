@@ -1,0 +1,4 @@
+# Shell scripts must keep LF endings whatever core.autocrlf says: a CR at the
+# end of a shebang or a command makes bash fail in ways that read as the script
+# being wrong rather than the checkout.
+*.sh text eol=lf

@@ -2,6 +2,8 @@
 import argparse
 import base64
 import gzip
+import hashlib
+from datetime import datetime, timezone
 import shutil
 import zlib
 from io import StringIO
@@ -15,7 +17,7 @@ import subprocess
 
 
 if len(sys.argv) == 1:
-   args = argparse.Namespace(verbose=True, font=True, sample=True, podium=True, yin=True, extension=False, guide=True, cert=False, clean=False, cert_host='') ;
+   args = argparse.Namespace(verbose=True, font=True, sample=True, podium=True, yin=True, extension=False, doc=False, pages=False, guide=True, cert=False, clean=False, cert_host='') ;
 else:
   parser = argparse.ArgumentParser()
   parser.add_argument('-s','--sample', action='store_true', help='(re)build build/sample.js')
@@ -23,6 +25,8 @@ else:
   parser.add_argument('-p','--podium', action='store_true', help='(re)build build/podium.html')
   parser.add_argument('-y','--yin', action='store_true', help='(re)build build/yin.js')
   parser.add_argument('-e','--extension', action='store_true', help='(re)build the personal Chrome extension')
+  parser.add_argument('--doc', action='store_true', help='(re)build build/doc-assets/, the guidebook media recompressed for deployment')
+  parser.add_argument('--pages', action='store_true', help='(re)build build/pages/, a self-contained deployment for a static host')
   parser.add_argument('-g','--guide', action='store_true', help='(re)build guidebook keyword index')
   parser.add_argument('--certificate', '--cert', action='store_true', dest='cert', help='(re)build certificate')
   parser.add_argument('--cert-host', dest='cert_host', default='', help='comma-separated extra SAN hosts (IPs and/or names) to add to the dev certificate')
@@ -91,8 +95,10 @@ if args.font:
     #################################
 
     # Build the embedded font (build/BravuraText.otf) from pristine lib/BravuraText.otf.
-    from build_font import build_bravura
+    from build_font import build_bravura, build_noto_jp
     build_bravura()
+    # And the Japanese text font, subset from pristine lib/NotoSansJP-Regular.otf.
+    build_noto_jp()
 
     outFileName = 'build/font.js'
 
@@ -164,6 +170,31 @@ if args.font:
     window.fontData["Patrick Hand"] = function() {
       if (!this._bytes) {
         const binary = atob(patrickHandBase64);
+        this._bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) {
+          this._bytes[i] = binary.charCodeAt(i);
+        }
+      }
+      return this._bytes;
+    }.bind({});
+
+    // Noto Sans JP, subset to Podium's Japanese glyph set (see build_font.py).
+    // Registered for CSS as well as for PDF embedding, so what the canvas draws
+    // and what gets written to the PDF are the same shapes.
+    const notoSansJpBase64 = \"""")
+
+        with open('build/NotoSansJP-subset.otf','rb') as inFile:
+            outFile.write(base64.b64encode(inFile.read()))
+
+        outFile.write(b"""\";
+
+    let notoSansJpFont = new FontFace("Noto Sans JP", "url(data:font/otf;charset=utf-8;base64," + notoSansJpBase64 + ")");
+    document.fonts.add(notoSansJpFont);
+    await notoSansJpFont.load();
+
+    window.fontData["Noto Sans JP"] = function() {
+      if (!this._bytes) {
+        const binary = atob(notoSansJpBase64);
         this._bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) {
           this._bytes[i] = binary.charCodeAt(i);
@@ -435,12 +466,16 @@ if args.yin:
 # service worker, and the scripts, which are all included inline. Every patch
 # must match exactly once: a change to pod.html that breaks one stops the build.
 PODIUM_PAGE_INCLUDE = '      // #include src/main.js minified\n'
-PODIUM_PAGE_PATCHES = [
+
+def podium_page_patches(canonical):
+  # canonical is None for a deployment whose URL is not known at build time, such
+  # as build/pages/: claiming another site as canonical would be wrong there.
+  return [
     # the license, in full, follows the page's own license notice:
     ('<https:/\\/www.gnu.org/licenses/>.\n-->\n',
      '<https:/\\/www.gnu.org/licenses/>.\n-->\n\n<!--\n{LICENSE}-->\n'),
     ('    <title id="title">Podium</title>\n',
-     '    <link rel="canonical" href="https://studiop5.org/podium">\n'
+     (f'    <link rel="canonical" href="{canonical}">\n' if canonical else '') +
      '    <link rel="manifest" href="manifest.webmanifest" />\n'
      '    <link rel="apple-touch-icon" href="icon192.png">\n'
      '    <meta name="apple-mobile-web-app-capable" content="yes">\n'
@@ -471,12 +506,28 @@ PODIUM_PAGE_PATCHES = [
      '    </script>\n'),
 ]
 
-def build_podium_page(outFileName):
+def git_commit():
+    # The commit the sources came from, so that the About panel can name the
+    # build exactly. There is no circularity in asking git at build time: build/
+    # is not tracked, so the order is always commit the sources, then build them.
+    # A "-dirty" suffix, spelled as git describe --dirty spells it, marks a build
+    # made with modifications still in the tree, whose hash therefore does not
+    # fully describe it.
+    try:
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'],
+                              capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(['git', 'status', '--porcelain', '--untracked-files=no'],
+                               capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return 'unknown'  # built outside a working tree, or without git
+    return (head + '-dirty') if dirty else head
+
+def build_podium_page(outFileName, canonical="https://studiop5.org/podium"):
     with open("src/pod.html", encoding='utf-8') as f:
         page = f.read()
     with open("LICENSE", encoding='utf-8') as f:
         license = f.read()
-    for old, new in PODIUM_PAGE_PATCHES:
+    for old, new in podium_page_patches(canonical):
         if page.count(old) != 1:
             sys.exit(f'Error: page patch target not found exactly once in src/pod.html: {old!r}')
         page = page.replace(old, new.replace('{LICENSE}', license))
@@ -484,10 +535,26 @@ def build_podium_page(outFileName):
     # the Packager reads its input as javascript, and would strip, say, the
     # rest of any line of html text containing "//".
     head, tail = page.split(PODIUM_PAGE_INCLUDE)
+    packaged = StringIO()
+    packaged.write(head)
+    Packager("src/pod.html", StringIO(PODIUM_PAGE_INCLUDE), packaged)
+    packaged.write(tail)
+    # Stamp the build so the Version panel can say which one is running. The
+    # version alone cannot answer that, and it is the question every PWA update
+    # raises: the service worker may still be answering from its cache. The date
+    # says when, the commit says from what. Matched loosely because the Packager
+    # minifies the spacing away.
+    stamped = packaged.getvalue()
+    for name, value in (
+            ('_podiumBuild_', datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')),
+            ('_podiumCommit_', git_commit())):
+        stamped, count = re.subn(
+            r'window\.%s\s*=\s*"dev"' % name, 'window.%s = "%s"' % (name, value),
+            stamped, count=1)
+        if count != 1:
+            sys.exit('Error: window.%s = "dev" not found in the packaged page.' % name)
     with open(outFileName, "w", encoding='utf-8', newline='\n') as outFileObj:
-        outFileObj.write(head)
-        Packager("src/pod.html", StringIO(PODIUM_PAGE_INCLUDE), outFileObj)
-        outFileObj.write(tail)
+        outFileObj.write(stamped)
 
 if args.extension:
     # A packaged Podium page always references this worklet. Keep extension
@@ -574,8 +641,35 @@ if args.podium:
   </g>
 </svg>'''
 
+    def imagemagick():
+        # Windows ships its own convert.exe, which converts FAT volumes to NTFS,
+        # so finding the name proves nothing: ask what it is. ImageMagick 7
+        # prefers "magick" in any case.
+        for command in ('magick', 'convert'):
+            if not shutil.which(command): continue
+            try:
+                version = subprocess.run([command, '-version'], capture_output=True,
+                                         text=True, timeout=10)
+            except (OSError, subprocess.SubprocessError):
+                continue
+            if 'ImageMagick' in version.stdout: return command
+        return None
+
+    def write_icon_svgs():
+        for size in (192, 512):
+            with open(f'build/icons/icon{size}.svg', 'w', encoding='utf-8') as f:
+                f.write(podium_icon_svg.format(size=size))
+
+    def remove_icon_svgs():
+        for size in (192, 512):
+            os.remove(f'build/icons/icon{size}.svg')
+
     pwa_icons_generated = False
+    icon_paths = [f'build/icons/icon{size}.png' for size in (192, 512)]
     try:
+        # A cairosvg installed without its native library raises OSError, not
+        # ImportError, and must fall through to a fallback rather than stop the
+        # build: the wheel installs cleanly on Windows without the cairo DLL.
         import cairosvg
         for size in [192, 512]:
             svg_content = podium_icon_svg.format(size=size)
@@ -585,23 +679,178 @@ if args.podium:
                            output_height=size)
         pwa_icons_generated = True
         if args.verbose: print('  Generated PWA icons using cairosvg')
-    except ImportError:
+    except (ImportError, OSError):
         # Try ImageMagick as fallback
-        if shutil.which('convert'):
-            for size in [192, 512]:
-                svg_content = podium_icon_svg.format(size=size)
-                svg_file = f'build/icons/icon{size}.svg'
-                with open(svg_file, 'w') as f:
-                    f.write(svg_content)
-                os.system(f'convert -background "#2d3748" {svg_file} -resize {size}x{size} -depth 8 -type TrueColor build/icons/icon{size}.png 2>/dev/null')
-                os.remove(svg_file)
-            pwa_icons_generated = True
-            if args.verbose: print('  Generated PWA icons using ImageMagick')
-        else:
-            if args.verbose: print('  Warning: Could not generate PWA icons (install cairosvg or ImageMagick)')
+        magick = imagemagick()
+        if magick:
+            write_icon_svgs()
+            for size in (192, 512):
+                subprocess.run([magick, '-background', '#2d3748', f'build/icons/icon{size}.svg',
+                                '-resize', f'{size}x{size}', '-depth', '8',
+                                '-type', 'TrueColor', f'build/icons/icon{size}.png'],
+                               capture_output=True)
+            remove_icon_svgs()
+            # Claiming success without looking is how this went unnoticed before.
+            pwa_icons_generated = all(os.path.exists(path) for path in icon_paths)
+            if args.verbose and pwa_icons_generated:
+                print(f'  Generated PWA icons using ImageMagick ({magick})')
+
+    if not pwa_icons_generated and shutil.which('node'):
+        # Playwright is already in this repository's toolchain, and on Windows it
+        # is usually the only one of the three that is actually present.
+        write_icon_svgs()
+        rendered = subprocess.run(['node', 'render-icons.js', 'build/icons', '192', '512'],
+                                  capture_output=True, text=True)
+        remove_icon_svgs()
+        pwa_icons_generated = all(os.path.exists(path) for path in icon_paths)
+        if args.verbose and pwa_icons_generated: print('  Generated PWA icons using Playwright')
+        elif not pwa_icons_generated and rendered.stderr.strip():
+            print(f'  NOTE: Playwright could not render the icons: {rendered.stderr.strip()}')
 
     if not pwa_icons_generated:
-        print('  NOTE: PWA icons not generated. Install cairosvg (pip install cairosvg) or ImageMagick')
+        print('  NOTE: PWA icons not generated. Install cairosvg or ImageMagick, '
+              'or make node and Playwright available.')
+
+GUIDEBOOK_EN = os.path.join('doc', 'Guidebook.html')
+GUIDEBOOK_JA = os.path.join('doc', 'Guidebook.ja.html')
+INDEX_BEGIN_MARK = '<!-- BEGIN KEYWORD INDEX -->'
+INDEX_END_MARK = '<!-- END KEYWORD INDEX -->'
+
+def guidebook_prose_digest(path=GUIDEBOOK_EN):
+    """Digest the English guidebook with the generated keyword index left out.
+
+    The translation tracks the prose. --guide rewrites the index in both files
+    from the same data, so counting it would report every index rebuild as a
+    translation that had fallen behind.
+    """
+    with open(path, encoding='utf-8') as f:
+        text = f.read()
+    begin, end = text.find(INDEX_BEGIN_MARK), text.find(INDEX_END_MARK)
+    if begin != -1 and end != -1:
+        text = text[:begin] + text[end + len(INDEX_END_MARK):]
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()[:16]
+
+if args.doc:
+    #################################
+    #   Guidebook media for deploy  #
+    #################################
+    # doc/assets/ is 42 MB of capture-resolution screenshots and screen
+    # recordings, which is why the guidebook has always been read from the web.
+    # build_doc.py derives a deployable set (13.5 MB) from it; --pages copies
+    # the result in. Encoding takes minutes, so it is its own flag and each
+    # output is rebuilt only when its input or its recipe changes.
+    from build_doc import build_doc_assets
+    if args.verbose: print('Recompressing guidebook media...')
+    build_doc_assets(verbose=args.verbose)
+
+if args.pages:
+    #################################
+    #   Static-host deployment      #
+    #################################
+    # A self-contained directory to upload to a static host such as GitHub
+    # Pages. Everything in it is referenced relatively, so it works from any
+    # subdirectory and the directory can be renamed -- with one exception: each
+    # OAuth provider's console must list podauth.html's exact URL, so moving the
+    # directory means re-registering it there. Google Drive is unaffected, its
+    # web path being authorised by JavaScript origin rather than by redirect URI.
+    pages_dir = os.path.join('build', 'pages')
+    shutil.rmtree(pages_dir, ignore_errors=True)
+    os.makedirs(pages_dir, exist_ok=True)
+    # The entry is index.html, so the URL is just the directory, which is what
+    # the manifest's "./" start_url and scope resolve to.
+    build_podium_page(os.path.join(pages_dir, 'index.html'), canonical=None)
+    for name in ('manifest.webmanifest', 'podauth.html'):
+        shutil.copyfile(os.path.join('src', name), os.path.join(pages_dir, name))
+
+    # The guidebook, so App -> Guide does not have to leave the deployment.
+    # src/panel.js probes for it with a HEAD request and uses the published copy
+    # at studiop5.org only when it is absent, so copying it in is the whole
+    # change: nothing in the app needs to know which deployment this is. The
+    # text is left exactly as published, studiop5.org references included --
+    # rewriting prose to match the host would need judgement this cannot apply.
+    #
+    # Only the Japanese translation is deployed. It is what this deployment's
+    # readers want, the panel leads with whichever translation it finds, and
+    # carrying both would double the 7.4 MB precache for a copy that is one tap
+    # and one request away: the panel's language switch falls back to the
+    # published English guidebook, which needs the network but nothing else.
+    doc_dir = os.path.join('build', 'doc-assets')
+    doc_images = sorted(name for name in os.listdir(doc_dir)
+                        if name.endswith('.webp')) if os.path.isdir(doc_dir) else []
+    doc_to_cache = []
+    if not doc_images:
+        print('  NOTE: build/doc-assets/ is empty; run build.py --doc to deploy the guidebook.')
+    else:
+        assets_dir = os.path.join(pages_dir, 'assets')
+        os.makedirs(assets_dir, exist_ok=True)
+        for name in sorted(os.listdir(doc_dir)):
+            if name.startswith('.'): continue    # the recipe manifest
+            shutil.copyfile(os.path.join(doc_dir, name), os.path.join(assets_dir, name))
+        with open(GUIDEBOOK_JA, encoding='utf-8', newline='') as f:
+            guidebook = f.read()
+        # A translation that has fallen behind the prose it was made from is
+        # still worth deploying -- most of it is still right -- so this reports
+        # rather than refuses, and prints what to paste once it has caught up.
+        prose_digest = guidebook_prose_digest()
+        stamped = re.search(r'TRANSLATED-FROM: ([0-9a-f]{16})', guidebook)
+        if not stamped:
+            print(f'  NOTE: {GUIDEBOOK_JA} carries no TRANSLATED-FROM stamp.')
+        elif stamped.group(1) != prose_digest:
+            print(f'  NOTE: {GUIDEBOOK_JA} was translated from an older '
+                  f'{GUIDEBOOK_EN}; deploying it anyway.\n'
+                  f'        Re-stamp it with TRANSLATED-FROM: {prose_digest} '
+                  f'once the translation has caught up.')
+        # The deployed screenshots are WebP; the videos keep both codec container
+        # and name, so only the images need redirecting.
+        guidebook, rewritten = re.subn(r'(src="assets/[^"]+)\.jpg"', r'\1.webp"', guidebook)
+        if rewritten != len(doc_images):
+            sys.exit(f'Error: the guidebook names {rewritten} images, '
+                     f'but build/doc-assets/ holds {len(doc_images)}.')
+        with open(os.path.join(pages_dir, 'Guidebook.ja.html'), 'w',
+                  encoding='utf-8', newline='') as f:
+            f.write(guidebook)
+        # Precache the guidebook and its images, so it reads offline. Not the
+        # videos: 11.5 MB against 2.5 MB, already preload="none", and the worker
+        # passes media straight through.
+        doc_to_cache = ['./Guidebook.ja.html'] + [f'./assets/{name}' for name in doc_images]
+
+    # The service worker serves the page from its cache, so a deployment whose
+    # sw.js is byte-identical to the last one would go unnoticed: the browser
+    # sees no new worker, never reinstalls, and keeps answering from the old
+    # cache. Stamp the cache name with the digest of everything the worker
+    # precaches, so a change to any of it changes the worker, which reinstalls
+    # and (see its activate handler) drops every cache that is not the current
+    # one. Taking the digest of the page alone would miss a changed guidebook.
+    digest = hashlib.sha256()
+    for relative in ['./index.html'] + doc_to_cache:
+        with open(os.path.join(pages_dir, relative[2:]), 'rb') as f:
+            digest.update(f.read())
+    page_digest = digest.hexdigest()[:12]
+    with open(os.path.join('src', 'sw.js'), encoding='utf-8') as f:
+        worker = f.read()
+    stamp = "const CACHE_NAME = 'podium-v2.3.0';"
+    if worker.count(stamp) != 1:
+        sys.exit(f'Error: cache name not found exactly once in src/sw.js: {stamp!r}')
+    worker = worker.replace(stamp, f"const CACHE_NAME = 'podium-v2.3.0-{page_digest}';")
+    doc_stamp = 'const docToCache = [];'
+    if worker.count(doc_stamp) != 1:
+        sys.exit(f'Error: precache list not found exactly once in src/sw.js: {doc_stamp!r}')
+    if doc_to_cache:
+        listed = ''.join(f"\n  '{url}'," for url in doc_to_cache)
+        worker = worker.replace(doc_stamp, f'const docToCache = [{listed}\n];')
+    with open(os.path.join(pages_dir, 'sw.js'), 'w', encoding='utf-8', newline='\n') as f:
+        f.write(worker)
+    # The manifest names the icons as siblings, so that is where they must go.
+    missing_icons = []
+    for size in (192, 512):
+        icon = os.path.join('build', 'icons', f'icon{size}.png')
+        if os.path.exists(icon):
+            shutil.copyfile(icon, os.path.join(pages_dir, f'icon{size}.png'))
+        else:
+            missing_icons.append(f'icon{size}.png')
+    if missing_icons:
+        print(f'  NOTE: {", ".join(missing_icons)} missing; run build.py --podium to generate them.')
+    if args.verbose: print(f'-- {pages_dir} (re)built.')
 
 if(args.cert):
     if shutil.which('openssl') == None:
@@ -693,6 +942,7 @@ if args.guide:
         "Export": ["chapter-7-export-import"],
         "File System Access API": ["chapter-4-open-save"],
         "Firefox settings": ["firefox-settings"],
+        "Fit": ["chapter-5-refit", "chapter-5-book"],
         "Fling gesture": ["chapter-3", "chapter-5-page-turning"],
         "Foot pedal": ["chapter-2-foot-pedal", "chapter-7-numbers"],
         "Full screen": ["chapter-8-screen", "chapter-3"],
@@ -700,6 +950,7 @@ if args.guide:
         "Google Drive": ["chapter-4-open-save"],
         "Grip": ["chapter-3"],
         "Group selection": ["chapter-6-edit"],
+        "Gutter": ["chapter-5-page-turning"],
         "Images, importing": ["chapter-6-cut-copy-paste"],
         "IMSLP": ["chapter-2"],
         "Import": ["chapter-7-export-import"],
@@ -724,7 +975,7 @@ if args.guide:
         "Opacity": ["chapter-6-pen-pencil", "chapter-7-add"],
         "Open source": ["overture"],
         "Outer ring": ["chapter-3"],
-        "Page numbers": ["chapter-7-numbers", "chapter-5-book"],
+        "Page numbers": ["chapter-7-numbers", "chapter-5-book", "chapter-5-page-turning"],
         "Page ordering": ["chapter-5-table"],
         "Page range": ["chapter-4-print"],
         "Page sizing": ["chapter-4-details"],
@@ -733,7 +984,7 @@ if args.guide:
         "Password-protected PDF": ["chapter-4-open-save"],
         "Paste buffer": ["chapter-7-export-import"],
         "PDF files": ["chapter-4-open-save", "overture"],
-        "Pinch-zoom": ["chapter-3", "chapter-5-book"],
+        "Pinch-zoom": ["chapter-3", "chapter-5-book", "chapter-5-refit"],
         "Pitch detector": ["chapter-9-piano"],
         "Playback": ["chapter-9-review"],
         "Practice scores": ["chapter-7-export-import"],
@@ -765,6 +1016,7 @@ if args.guide:
         "Timbre": ["chapter-9-piano"],
         "Transform handles": ["chapter-6-edit"],
         "Tuner": ["chapter-9-piano"],
+        "Two-finger double-tap": ["chapter-5-refit"],
         "Undo history": ["chapter-6-undo", "chapter-7-undo"],
         "Waveform": ["chapter-9-review"],
         "YIN pitch detection": ["chapter-9-piano"],
@@ -917,6 +1169,24 @@ if args.guide:
 
     with open(GUIDEBOOK_PATH, 'w', encoding='utf-8') as f:
         f.write(guide_html)
+
+    # The same index goes into the translation. It indexes English terms against
+    # ids, and every id is shared, so one block serves both files -- and a term
+    # looked up in the index is a term the app itself shows in English anyway.
+    # Only the replacement branch applies here: a translation without the
+    # markers has not been prepared for an index, and guessing where to put one
+    # (its own TOC entry is translated) would be worse than saying so.
+    if os.path.exists(GUIDEBOOK_JA):
+        with open(GUIDEBOOK_JA, 'r', encoding='utf-8') as f:
+            translated = f.read()
+        if INDEX_BEGIN in translated and INDEX_END in translated:
+            before = translated[:translated.index(INDEX_BEGIN)]
+            after = translated[translated.index(INDEX_END) + len(INDEX_END):]
+            with open(GUIDEBOOK_JA, 'w', encoding='utf-8') as f:
+                f.write(before + index_html + after)
+        else:
+            print(f'  NOTE: {GUIDEBOOK_JA} has no keyword index markers; '
+                  'its index was left alone.')
 
     if args.verbose: print(f'-- Guidebook index (re)built: {len(entries)} entries')
 

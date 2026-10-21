@@ -128,6 +128,11 @@ class Gestures {
         ScreenPanel.update(this.tr1.pz);
       if (e.ctrlKey) { this.startCtrlPan(e); return; }
       if (e.target === _body_) _body_.setPointerCapture(e.pointerId);
+      // A page-number band answers for a strip of the margin just outside it,
+      // where the window has room to spare: see Pager.claim(). Offered here
+      // because out there the press lands on the background, and nothing else
+      // would think to ask the band about it.
+      if (e.target === _body_) Layout.activeLayout?.pagerClaim(e);
       this.watch(e);
       return;
     }
@@ -142,7 +147,7 @@ class Gestures {
 
   watch(e) {
     let onBody = e.target === _body_;
-    let gestureDelta = Math.min(innerWidth, innerHeight) * 0.15;
+    let gestureDelta = _swipeDelta_();
     let cancelDelta = 16;
     this.timer.run(_gs_, () => {
       // when e.taken == true, the long-press timer is a no-op.
@@ -164,7 +169,10 @@ class Gestures {
     listen(_body_, "pointerup", eup => {
       unlisten(mv);
       this.timer.cancel();
-      if (!onBody) return;   // swipe gestures only from background
+      // Swipe gestures only from the background -- and not from the strip of it
+      // that a page-number band down the sides answers for, where the swipe and
+      // the band's own scrubbing are the same movement and only one can win.
+      if (!onBody || e.swipeTaken) return;
       let dY = eup.clientY - e.clientY;
       if (Math.abs(dY) > gestureDelta) {
         if (dY < 0) // bottom->top (swipe up): toggle the menu (center/expand <-> park)
@@ -205,9 +213,31 @@ class Gestures {
     }, { capture: true, once: true });
   }
 
+  twoFingerTap(target) {
+    // A pinch that neither moved nor lingered is a two-finger tap, and two of
+    // them in a row refit the layout -- the way back from the pinch that put the
+    // score where it is, made with the same two fingers that did it. One tap
+    // alone has to go on meaning nothing: a reader resting two fingers on the
+    // score must not have their view thrown away.
+    //
+    // Only the layout answers. On the background a pinch resizes everything, so
+    // the tap would promise to undo all of it, which is Storage -> Menu's job;
+    // the menu and panels have no fit to return to.
+    let layout = Layout.activeLayout;
+    if (!layout || target !== layout.elm) return void (this.tap2 = null);
+    let now = performance.now();
+    if (this.tap2 && now - this.tap2 < _gs_) {
+      this.tap2 = null;
+      layout.refit();
+    } else this.tap2 = now;
+  }
+
   startPinch(e) {
     this.pinchEnd?.();   // clear any pinch left dangling (e.g. torn down by a tab-blur synthetic up)
     this.tr2 = { e, pz: e.target.closest(".pz") || _body_ };
+    let tapTarget = this.tr1.pz;   // the pinch's target: the first finger's (see pzTargets)
+    let tapBy = performance.now() + _gs_;
+    let still = true;
     let mid0X = (this.tr1.e.clientX + this.tr2.e.clientX) / 2;
     let mid0Y = (this.tr1.e.clientY + this.tr2.e.clientY) / 2;
     let hypot = Math.hypot(this.tr1.e.clientX - this.tr2.e.clientX, this.tr1.e.clientY - this.tr2.e.clientY);
@@ -227,6 +257,12 @@ class Gestures {
       ratio = 1 + (ratio - 1) / 3;  // dampen zoom ratio
       let midX = (this.tr1.e.clientX + this.tr2.e.clientX) / 2;
       let midY = (this.tr1.e.clientY + this.tr2.e.clientY) / 2;
+      // Fingers never hold perfectly still, so judge a tap by what the pinch
+      // did, not by whether a pointermove arrived: a zoom of two percent and a
+      // pan of ten pixels are nothing anyone asked for. Erring towards calling
+      // it still is the cheaper mistake, since one tap alone does nothing.
+      if (Math.abs(ratio - 1) > 0.02 || Math.hypot(midX - mid0X, midY - mid0Y) > 10)
+        still = false;
       for (let [target, { fontSize, left, top }] of targets) {
         target.style.fontSize = Math.max(fontSize * ratio, this.minEmSize) + "em";
         if (target !== _body_) {
@@ -251,6 +287,8 @@ class Gestures {
     let up = listen(_body_, "pointerup", eup => {
       if (!eup.isTrusted) return;
       eup.stopImmediatePropagation();
+      if (still && performance.now() < tapBy) this.twoFingerTap(tapTarget);
+      else this.tap2 = null;   // a real pinch is not half of a double-tap
       this.pinchEnd();
     }, { capture: true });
     this.pinchEnd = () => {
