@@ -36,6 +36,7 @@ import "./score.js";
 import { ScreenPanel } from "./panel.js";
 import { initFabric } from "./canvas.js";
 import { SharedBuffer } from "./sharedBuffer.js";
+import "./wink.js";
 
 window.pdfjsLib.GlobalWorkerOptions.workerPort = new Worker("pdf.worker.min.mjs", { type: "module" });
 // -skip
@@ -58,6 +59,7 @@ window.pdfjsLib.GlobalWorkerOptions.workerPort = new Worker("pdf.worker.min.mjs"
 // #include src/panel.js minified
 // #include src/file.js minified
 // #include src/yin.js minified
+// #include src/wink.js minified
 // #include src/tool.js minified
 // #include src/sharedBuffer.js minified
 
