@@ -1,7 +1,7 @@
 // Podium Service Worker
 // Enables offline functionality and PWA installation
 
-const CACHE_NAME = 'podium-v2.3.0-3520ec6af732';
+const CACHE_NAME = 'podium-v2.3.0-d5baafdc6480';
 // Relative to this script, so Podium works when served from a subdirectory.
 // The packaged page is podium.html where Podium is deployed alongside the rest
 // of the site, and index.html where the deployment is Podium alone, so try both
