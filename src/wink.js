@@ -1032,7 +1032,10 @@ class WinkTurner {
       this.hud?.turned();
       // "Hold" fills the gauge and leaves the page alone, so the gesture can
       // be tried against a real score without losing your place in it.
-      if (this.stash.turn != "Hold" && _turnPage_?.(verdict.turn)) this.turns++;
+      // Reached through window, not as a bare name: this runs from a video
+      // frame callback, and a ReferenceError there would be swallowed as a
+      // console line in a build where main.js had not set it.
+      if (this.stash.turn != "Hold" && window._turnPage_?.(verdict.turn)) this.turns++;
     }
     this.tell("frame", sample, verdict);
   }
