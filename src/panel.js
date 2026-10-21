@@ -732,6 +732,7 @@ for more details.</p>
           <a style="font-size:.6em;" href="https://studiop5.org/releaseNotes.html#v${_podiumVersion_}">Release Notes</a>
           <div style="font-size:.6em;color:#888;margin-top:0.5em;">${typeof chrome !== "undefined" && chrome.runtime?.id ? "Browser Extension" : window.matchMedia("(display-mode: standalone)").matches ? "Progressive Web App" : location.protocol + "//" + location.host}</div>
           <div style="font-size:.6em;color:#888;" translate="no">Build ${_podiumBuild_}</div>
+          ${this.commitLines()}
         </div>
         <div style="font-size:1.2em;text-align:center;font-variant-emoji:text;margin-top:2em;line-height:1.6em;">
           <a href="https://studiop5.org/privacy.html">\u{1F6E1} Privacy</a>&nbsp;
@@ -742,6 +743,24 @@ for more details.</p>
      </div>`
   );
 
+
+  commitLines() {
+    // The build date narrows a build down; the commit names it. Both lengths of
+    // it: the short hash is what a person reads and quotes, the whole one is what
+    // a tool is given, and it is left selectable so it can be copied off a
+    // tablet. "dirty" says the build carried uncommitted changes and so is not
+    // fully described by its hash (see git_commit() in build.py). The hash is
+    // only shown as one when it looks like one: an unstamped build says "dev".
+    let dirty = _podiumCommit_.endsWith("-dirty");
+    let hash = dirty ? _podiumCommit_.slice(0, -"-dirty".length) : _podiumCommit_;
+    let line = (text, style = "") =>
+      `<div style="font-size:.6em;color:#888;${style}" translate="no">${text}</div>`;
+    if (!/^[0-9a-f]{7,}$/.test(hash)) return line(`Commit ${_podiumCommit_}`);
+    return (
+      line(`Commit ${hash.slice(0, 8)}${dirty ? "-dirty" : ""}`) +
+      line(hash, "user-select:text;-webkit-user-select:text;word-break:break-all;")
+    );
+  }
 
   constructor(cell) {
     super(cell);

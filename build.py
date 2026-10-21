@@ -506,6 +506,22 @@ def podium_page_patches(canonical):
      '    </script>\n'),
 ]
 
+def git_commit():
+    # The commit the sources came from, so that the About panel can name the
+    # build exactly. There is no circularity in asking git at build time: build/
+    # is not tracked, so the order is always commit the sources, then build them.
+    # A "-dirty" suffix, spelled as git describe --dirty spells it, marks a build
+    # made with modifications still in the tree, whose hash therefore does not
+    # fully describe it.
+    try:
+        head = subprocess.run(['git', 'rev-parse', 'HEAD'],
+                              capture_output=True, text=True, check=True).stdout.strip()
+        dirty = subprocess.run(['git', 'status', '--porcelain', '--untracked-files=no'],
+                               capture_output=True, text=True, check=True).stdout.strip()
+    except (OSError, subprocess.CalledProcessError):
+        return 'unknown'  # built outside a working tree, or without git
+    return (head + '-dirty') if dirty else head
+
 def build_podium_page(outFileName, canonical="https://studiop5.org/podium"):
     with open("src/pod.html", encoding='utf-8') as f:
         page = f.read()
@@ -525,14 +541,18 @@ def build_podium_page(outFileName, canonical="https://studiop5.org/podium"):
     packaged.write(tail)
     # Stamp the build so the Version panel can say which one is running. The
     # version alone cannot answer that, and it is the question every PWA update
-    # raises: the service worker may still be answering from its cache. Matched
-    # loosely because the Packager minifies the spacing away.
-    stamped, count = re.subn(
-        r'window\._podiumBuild_\s*=\s*"dev"',
-        'window._podiumBuild_ = "%s"' % datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC'),
-        packaged.getvalue(), count=1)
-    if count != 1:
-        sys.exit('Error: window._podiumBuild_ = "dev" not found in the packaged page.')
+    # raises: the service worker may still be answering from its cache. The date
+    # says when, the commit says from what. Matched loosely because the Packager
+    # minifies the spacing away.
+    stamped = packaged.getvalue()
+    for name, value in (
+            ('_podiumBuild_', datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')),
+            ('_podiumCommit_', git_commit())):
+        stamped, count = re.subn(
+            r'window\.%s\s*=\s*"dev"' % name, 'window.%s = "%s"' % (name, value),
+            stamped, count=1)
+        if count != 1:
+            sys.exit('Error: window.%s = "dev" not found in the packaged page.' % name)
     with open(outFileName, "w", encoding='utf-8', newline='\n') as outFileObj:
         outFileObj.write(stamped)
 

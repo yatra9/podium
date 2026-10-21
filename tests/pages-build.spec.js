@@ -78,10 +78,42 @@ test("the static-host build stamps itself so a device can be checked", async ({ 
   const build = await page.evaluate(() => window._podiumBuild_);
   expect(build).toMatch(/^\d{4}-\d{2}-\d{2} \d{2}:\d{2} UTC$/);
 
+  // And the date alone cannot be matched against the repository, so the commit
+  // is stamped beside it: a whole hash, optionally marked as carrying
+  // uncommitted changes. "unknown" is allowed, for a build made without git.
+  const commit = await page.evaluate(() => window._podiumCommit_);
+  expect(commit).toMatch(/^([0-9a-f]{40}(-dirty)?|unknown)$/);
+
   // Served from src/ the sources are unstamped, and must say so rather than
   // claiming a build they are not.
   await page.goto("/pod.html");
-  expect(await page.evaluate(() => window._podiumBuild_)).toBe("dev");
+  expect(await page.evaluate(() => [window._podiumBuild_, window._podiumCommit_]))
+    .toEqual(["dev", "dev"]);
+});
+
+test("the About panel names the build's commit both ways", async ({ page }) => {
+  // The short hash is what a person reads off a tablet and quotes; the whole one
+  // is what a tool is given. A build with uncommitted changes says so, once.
+  await page.goto("/pages/index.html");
+  await page.waitForFunction(() => !!window._menu_?.rings?.app?.cells?.about);
+  // The panel itself, without the menu gesture that would place it: opening it
+  // for real needs a pointer to put it under.
+  await page.evaluate(() => {
+    const panel = _panels_.AboutPanel.get(_menu_.rings.app.cells.about);
+    _body_.append(panel.elm);
+  });
+  const face = page.locator(".Panel__elm", { hasText: "PODIUM: Sheet Music Studio" });
+  await expect(face).toBeVisible();
+  const shown = {
+    text: await face.textContent(),
+    commit: await page.evaluate(() => window._podiumCommit_),
+  };
+  const dirty = shown.commit.endsWith("-dirty");
+  const hash = dirty ? shown.commit.slice(0, -6) : shown.commit;
+  expect(shown.text).toContain(`Commit ${hash.slice(0, 8)}${dirty ? "-dirty" : ""}`);
+  expect(shown.text).toContain(hash);
+  // The whole hash is shown as a hash, so it can be copied and used as one.
+  expect(shown.text).not.toContain(`${hash}-dirty`);
 });
 
 test("the deployed guidebook is used in place of the published one", async ({ page }) => {

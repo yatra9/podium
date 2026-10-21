@@ -84,6 +84,11 @@ window._podiumVersion_ = "2.3.0";
 // question comes up on every PWA update, where the service worker may still be
 // answering from its cache.
 window._podiumBuild_ = "dev";
+// The commit those sources came from, stamped by the same build step. A date
+// narrows a build down; a hash names it. "dev" when the sources are served
+// directly, "unknown" when built without git, and a "-dirty" suffix when the
+// tree had uncommitted changes, so the hash does not fully describe the build.
+window._podiumCommit_ = "dev";
 window._body_ = document.body;
 window._lastTarget_ = null; // last touched .pz element, excluding EditPanel
 window._dvPxRt_ = 1 + (devicePixelRatio - 1) * 0.3;
