@@ -1582,6 +1582,7 @@ class LayoutPanel extends Panel {
         <div data-tag="bookSliders"></div>
         Numbers<br>
         <div data-tag="pnBook"></div>
+        <div data-tag="pnBookPlace"></div>
        </div>
 
       <div data-tag="horizontalFace" class="Panel__body">
@@ -1590,6 +1591,7 @@ class LayoutPanel extends Panel {
         <div data-tag="fitHorizontalSliders"></div>
         Numbers<br>
         <div data-tag="pnHorizontal"></div>
+        <div data-tag="pnHorizontalPlace"></div>
       </div>
 
       <div data-tag="verticalFace" class="Panel__body">
@@ -1598,6 +1600,7 @@ class LayoutPanel extends Panel {
         <div data-tag="fitVerticalSliders"></div>
         Numbers<br>
         <div data-tag="pnVertical"></div>
+        <div data-tag="pnVerticalPlace"></div>
       </div>
 
       <div data-tag="tableFace" class="Panel__body">
@@ -1631,6 +1634,7 @@ class LayoutPanel extends Panel {
       if (tag == "fit" && _score_ && this.cell == Layout.activeLayout?.cell)
         return void Layout.activeLayout.refit();
       if (tag == "fit") this.cell.stash.pz = null; // reset pz-set marker so layout will use fit setting
+      if (tag == "pnShow") this.syncPnPlace();
       if (tag == "pace") return; // no rebuild required
       if (_score_ && this.cell == Layout.activeLayout.cell) {
         if(tag == "pgSnap") // no rebuild, but must update
@@ -1684,9 +1688,41 @@ class LayoutPanel extends Panel {
       pace:   { min: 0,  max: 10000, step: 1,   curve: 2,      col: 2, row: 2, msg: msgCallback},
     };
 
+    // Table prints its numbers in each page's corner, so it has no edges to
+    // choose between and keeps the plain On/Off.
     let pnGroupDef = {
       On:  { svg: "Numbers", radio: "pnShow" },
       Off: { svg: "Close",   radio: "pnShow" },
+    };
+
+    // The others carry theirs in a band along two edges. Which pair of edges,
+    // and whether the band takes a strip of its own or lies over the pages, is
+    // the reader's choice: a band is 45px of a dimension the fit may be
+    // fighting for, and the page with the room to spare is not always the same.
+    let pnAxisGroupDef = {
+      Off:   { svg: "Close",       radio: "pnShow" },
+      "L-R": { svg: "Numbers L-R", radio: "pnShow" },
+      "T-B": { svg: "Numbers T-B", radio: "pnShow" },
+    };
+
+    let pnPlaceGroupDef = {
+      Inset: { svg: "Numbers Inset", radio: "pnPlace" },
+      Over:  { svg: "Numbers Over",  radio: "pnPlace" },
+    };
+
+    // ButtonGroup writes to the defs it is given (it marks buttons disabled),
+    // so each face needs defs of its own, down to the per-button objects.
+    let copyDef = (def) =>
+      Object.fromEntries(Object.entries(def).map(([tag, d]) => [tag, { ...d }]));
+
+    // The place row answers a question that does not arise with the numbers off.
+    this.pnPlaceGroups = {};
+    this.syncPnPlace = () => {
+      for (let [key, group] of Object.entries(this.pnPlaceGroups)) {
+        let off = _menu_.rings.layout.cells[key].stash.pnShow == "Off";
+        for (let d of Object.values(group.defs)) d.disabled = off;
+        group.refresh();
+      }
     };
 
     let tableSlidersGroupDef = {
@@ -1705,7 +1741,9 @@ class LayoutPanel extends Panel {
     tags.bookSliders.replaceWith(
       new SliderGroup(stash, bookSlidersGroupDef, handler).elm,
     );
-    tags.pnBook.replaceWith(new ButtonGroup(stash, pnGroupDef, handler).elm);
+    tags.pnBook.replaceWith(new ButtonGroup(stash, copyDef(pnAxisGroupDef), handler).elm);
+    this.pnPlaceGroups.book = new ButtonGroup(stash, copyDef(pnPlaceGroupDef), handler);
+    tags.pnBookPlace.replaceWith(this.pnPlaceGroups.book.elm);
 
     // build horizontal face
     stash = _menu_.rings.layout.cells.horizontal.stash;
@@ -1716,8 +1754,10 @@ class LayoutPanel extends Panel {
       new SliderGroup(stash, horzSlidersGroupDef, handler).elm,
     );
     tags.pnHorizontal.replaceWith(
-      new ButtonGroup(stash, pnGroupDef, handler).elm
+      new ButtonGroup(stash, copyDef(pnAxisGroupDef), handler).elm
     );
+    this.pnPlaceGroups.horizontal = new ButtonGroup(stash, copyDef(pnPlaceGroupDef), handler);
+    tags.pnHorizontalPlace.replaceWith(this.pnPlaceGroups.horizontal.elm);
 
     // build vertical face
     stash = _menu_.rings.layout.cells.vertical.stash;
@@ -1728,8 +1768,10 @@ class LayoutPanel extends Panel {
       new SliderGroup(stash, vertSlidersGroupDef, handler).elm
     );
     tags.pnVertical.replaceWith(
-      new ButtonGroup(stash, pnGroupDef, handler).elm
+      new ButtonGroup(stash, copyDef(pnAxisGroupDef), handler).elm
     );
+    this.pnPlaceGroups.vertical = new ButtonGroup(stash, copyDef(pnPlaceGroupDef), handler);
+    tags.pnVerticalPlace.replaceWith(this.pnPlaceGroups.vertical.elm);
 
     // build table face
     stash = _menu_.rings.layout.cells.table.stash;
@@ -1738,11 +1780,13 @@ class LayoutPanel extends Panel {
     tags.tableFlowSliders.replaceWith(
       new SliderGroup(stash, tableSlidersGroupDef, handler).elm
     );
-    tags.pnTable.replaceWith(new ButtonGroup(stash, pnGroupDef, handler).elm);
+    tags.pnTable.replaceWith(new ButtonGroup(stash, copyDef(pnGroupDef), handler).elm);
+    this.syncPnPlace();
   }
 
   show() {
     super.show();
+    this.syncPnPlace();
     Object.values(this.faces).forEach((face) => face.remove());
     this.content.append(this.faces[this.cell.key]);
     return this;

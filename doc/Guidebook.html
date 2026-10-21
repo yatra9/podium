@@ -1584,7 +1584,7 @@ function closeVideo(event, container) {
    <div class="note">Fling speed is measured only in the horizontal direction (or vertical direction, for the Vertical layout). Flinging with a straight, horizontal motion gives the fastest result for a given effort. To produce a controlled slow page turn, try flinging at an angle (say, 45°). For some, this is easier to execute than trying to perform a slow, purely horizontal movement.</div>
 
     <ul>
-      <li><strong>Pager:</strong> Book, Horizontal, and Vertical layouts have gutters to the left and right of the score (top and bottom in Vertical layout), each containing a draggable page number called the <em>pager cursor</em>. The left cursor shows the page number of the first visible page; the right cursor shows the last. Drag a cursor to navigate quickly through the score. As you drag, a floating readout follows your pointer showing the selected page number — useful when your finger is obscuring the cursor itself. For finer control in a large score, drag the cursor away from the gutter: the further away, the greater the sensitivity, making it easy to land precisely on an individual page. The pager can be toggled on or off using the <strong>Numbers</strong> button on the layout's corresponding panel. When off, the gutter becomes very narrow and the page number is hidden, but dragging on the gutter still navigates the score and the floating readout remains visible.</li>
+      <li><strong>Pager:</strong> Book, Horizontal, and Vertical layouts have gutters along two opposite edges of the score, each containing a draggable page number called the <em>pager cursor</em>. The cursor on the leading edge &mdash; the left one, or the top one &mdash; shows the page number of the first visible page; the one on the trailing edge shows the last. Drag a cursor to navigate quickly through the score. As you drag, a floating readout follows your pointer showing the selected page number — useful when your finger is obscuring the cursor itself. For finer control in a large score, drag the cursor away from the gutter: the further away, the greater the sensitivity, making it easy to land precisely on an individual page. The <strong>Numbers</strong> buttons on the layout's panel choose which pair of edges the pagers run along: <strong>L-R</strong> puts them down the left and right of the score, <strong>T-B</strong> across its top and bottom, and <strong>Off</strong> hides the page numbers altogether. A pager takes about 45 pixels from the dimension it runs along, so putting it on the dimension your window has room to spare in leaves more of the window for the score &mdash; a tall page in a wide window has room at the sides, the same page in a tall window has room above and below. The second row of buttons says whether the pagers take a gutter of their own (<strong>Inset</strong>) or are drawn over the edge of the page itself (<strong>Over</strong>), where they cost the score nothing at all: most engraved pages have a margin wide enough to carry a page number. When the numbers are off, the gutter becomes very narrow and the page number is hidden, but dragging on the gutter still navigates the score and the floating readout remains visible.</li>
     </ul>
 
     <h4 id="chapter-5-bookmarks">Bookmarks</h4>
@@ -2749,6 +2749,7 @@ function closeVideo(event, container) {
         <dt>Grip</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
         <dt>Group selection</dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
         <dt>Guide<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-guide"/></svg></dt><dd> &mdash; <a href="#chapter-8-guide">8.3</a></dd>
+        <dt>Gutter</dt><dd> &mdash; <a href="#chapter-5-page-turning">Ch.5</a></dd>
     </dl>
     <div class="idx-letter">H</div>
     <dl>
@@ -2806,7 +2807,7 @@ function closeVideo(event, container) {
     </dl>
     <div class="idx-letter">P</div>
     <dl>
-        <dt>Page numbers</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-7-numbers">7.1</a></dd>
+        <dt>Page numbers</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-7-numbers">7.1</a>, <a href="#chapter-5-page-turning">Ch.5</a></dd>
         <dt>Page ordering</dt><dd> &mdash; <a href="#chapter-5-table">5.4</a></dd>
         <dt>Page range</dt><dd> &mdash; <a href="#chapter-4-print">4.4</a></dd>
         <dt>Page Ring</dt><dd> &mdash; <a href="#chapter-7">Ch.7</a></dd>

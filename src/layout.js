@@ -331,6 +331,35 @@ class Layout {
     Object.assign(this.elm.style, this.centerLT());
   }
 
+  // Which edges the page-number bands sit on when the layout does not say
+  // otherwise. Book and Horizontal have always used the sides, Vertical the ends.
+  get pnDefaultAxis() { return "L-R"; }
+
+  pnAxis() {
+    // The edges the number bands sit on: "L-R" (a tall band down each side) or
+    // "T-B" (a wide one across the top and the foot), and null when the reader
+    // has turned the numbers off. A score saved before the choice existed
+    // carries "On", which meant whichever edges that layout used then.
+    if (!this.pnShow || this.pnShow == "Off") return null;
+    return this.pnShow == "On" ? this.pnDefaultAxis : this.pnShow;
+  }
+
+  pnOver() {
+    // Whether the bands are drawn over the pages rather than beside them. Over
+    // the pages they cost no room at all, which is the point: a band is 45px of
+    // a dimension the fit may be fighting for. Pages are engraved with a margin
+    // of their own, so the numbers land on paper rather than on music.
+    return this.pnAxis() != null && this.pnPlace == "Over";
+  }
+
+  pnGirth(axis) {
+    // How much room the bands take from @axis ("L-R" takes it from the width,
+    // "T-B" from the height). An edge with no band on it, or with one drawn
+    // over the pages, still keeps Layout.margin so a page cannot touch the
+    // layout's own border.
+    return this.pnAxis() == axis && !this.pnOver() ? Pager.width : Layout.margin;
+  }
+
   userPz() {
     // The user's saved pan-zoom for this layout's cell, but only if it was captured
     // at the current viewport size; otherwise null, so the default fit is used.
@@ -980,7 +1009,6 @@ class BookLayout extends Layout {
       if (!adjusting && pn > pgCount) return (cursor.textContent = "\u2219"); // no pg on right side, so no pn either
       return pnToDiv(pn, cursor);
     });
-    this.pagerLeft.elm.style.left = this.pagerRight.elm.style.right = 0;
   }
 
   destructor() {
@@ -1008,10 +1036,17 @@ class BookLayout extends Layout {
     // top/bottom gap and left/right gap, for a border-radius of .8em
     g.tbGap = .2 * _pxPerEm_; 
     g.borderPx = 0.025 * _pxPerEm_ * 2; // top+bottom border included in box-sizing:border-box height
-    g.lrGap = this.pnShow ==  "On"? 0: g.tbGap ;
     // Pager always occupies its own strip (hidden or not), lrGap=0 when pager is present.
     // Hidden pager gets Layout.margin width — narrow but non-overlapping with pages.
-    g.pagerWidth = this.pnShow == "On" ? Pager.width : Layout.margin;
+    // Which pair of edges the bands sit on is the reader's, so that their 45px
+    // can be taken off whichever dimension the fit is not fighting for; drawn
+    // over the pages they take nothing from either (see Layout.pnGirth).
+    g.pagerWidth = this.pnGirth("L-R");
+    g.lrGap = g.pagerWidth > Layout.margin ? 0 : g.tbGap; // a band is its own gap
+    // The ends keep the plain gap when no band is on them, and that gap is in em
+    // so it scales with the reader's zoom; a band does not (see the width below).
+    g.pagerHeight = Math.max(this.pnGirth("T-B"), g.tbGap);
+    g.pagerHeightPx = this.pnAxis() == "T-B" && !this.pnOver() ? g.pagerHeight : 0;
     g.pgCount = this.score.pgs.length;
     let spineT = Math.min(g.pgCount / 100, 1);
     g.bindingWidth = (0.5 + spineT) * _pxPerEm_;
@@ -1020,14 +1055,14 @@ class BookLayout extends Layout {
       g.pgWidth = score.maxWidth;
       g.pgHeight = score.maxHeight;
       g.bookWidth = g.lrGap + g.pagerWidth + g.pgWidth + g.pgWidth + g.pagerWidth + g.lrGap;
-      g.bookHeight = g.tbGap + g.pgHeight + g.tbGap + g.borderPx;
+      g.bookHeight = g.pagerHeight + g.pgHeight + g.pagerHeight + g.borderPx;
     }
 
     if (fit == "auto" || fit == "width") {
       g.bookWidth = innerWidth - Layout.margin - Layout.margin;
       g.pgWidth = (g.bookWidth - g.pagerWidth - g.lrGap - g.lrGap - g.pagerWidth) / 2;
       g.pgHeight = Math.floor(g.pgWidth * (score.maxHeight / score.maxWidth));
-      g.bookHeight = g.tbGap + g.pgHeight + g.tbGap + g.borderPx;
+      g.bookHeight = g.pagerHeight + g.pgHeight + g.pagerHeight + g.borderPx;
 
       if(fit == "auto") {
         // Check if layout will fit entirely within window. If not, recalculate with fit = HEIGHT;
@@ -1037,7 +1072,7 @@ class BookLayout extends Layout {
         if(layoutWidth > innerWidth)
           fit = "height";
         else {
-          let layoutHeight = Math.round(Layout.margin * 2 + g.pgHeight + g.tbGap * 2 + g.borderPx);
+          let layoutHeight = Math.round(Layout.margin * 2 + g.pgHeight + g.pagerHeight * 2 + g.borderPx);
           if(layoutHeight > innerHeight) fit = "height";
         }
       }
@@ -1045,7 +1080,7 @@ class BookLayout extends Layout {
 
     if (fit == "height") {
       g.bookHeight = innerHeight - Layout.margin - Layout.margin;
-      g.pgHeight = g.bookHeight - g.tbGap - g.tbGap - g.borderPx;
+      g.pgHeight = g.bookHeight - g.pagerHeight - g.pagerHeight - g.borderPx;
       g.pgWidth = Math.floor(g.pgHeight * (score.maxWidth / score.maxHeight));
       g.bookWidth = g.lrGap + g.pagerWidth + g.pgWidth + g.pgWidth + g.pagerWidth + g.lrGap;
     }
@@ -1062,11 +1097,12 @@ class BookLayout extends Layout {
 
     // book
     Object.assign(this.layout.style, {
-      height: toEm(g.bookHeight),
       // Note that book's width is set by adding pagerWidth in px, then subtracting pagerWidth in em's.
       // Initially, they are equal, so contribute nothing, but if/when the book is resized through em change,
       // their difference will account for delta between the pagers, which don't scale, and
-      // the book itself, which does.
+      // the book itself, which does. The height gets the same treatment, but only
+      // for the part of it a band occupies: the plain end gap is em and scales.
+      height: `calc(${toEm(g.bookHeight)} + ${g.pagerHeightPx * 2}px - ${toEm(g.pagerHeightPx * 2)})`,
       width: `calc(${toEm(g.bookWidth)} + ${g.pagerWidth * 2}px - ${toEm(g.pagerWidth * 2)})`,
     });
 
@@ -1075,7 +1111,7 @@ class BookLayout extends Layout {
     this.binding.style.left = `calc(50% - ${toEm(g.bindingWidth / 2)})`;
 
     // spine...slots attach here. --stitch-w and --pg-h drive ::before/::after dot strips.
-    this.spine.style.top = toEm(g.tbGap);
+    this.spine.style.top = toEm(g.pagerHeight);
     this.spine.style.setProperty('--stitch-w', toEm(g.bindingWidth * 0.8));
     this.spine.style.setProperty('--pg-h', toEm(g.pgHeight));
 
@@ -1092,10 +1128,17 @@ class BookLayout extends Layout {
     }
     this.layoutSlots();
 
-    // pagers
+    // pagers. The left page's number goes above the right page's when the bands
+    // move to the ends, which is the only reading of top and bottom that keeps
+    // the pages' own order.
+    // With the numbers off the bands keep the edges they would have had: hidden
+    // is not gone, and they still answer a finger that lands on them.
+    let ends = (this.pnAxis() ?? this.pnDefaultAxis) == "T-B";
+    this.pagerLeft.setPosition(ends ? "top" : "left");
+    this.pagerRight.setPosition(ends ? "bottom" : "right");
     this.layout.append(this.pagerLeft.elm);
     this.layout.append(this.pagerRight.elm);
-    let pagerHidden = this.pnShow != "On";
+    let pagerHidden = this.pnAxis() == null;
     this.pagerLeft.setHidden(pagerHidden, Layout.margin);
     this.pagerRight.setHidden(pagerHidden, Layout.margin);
     this.pagerLeft.build();
@@ -1568,6 +1611,11 @@ class ScrollLayout
 
 
 class ScrollLayout extends Layout {
+  // A horizontal scroll has always carried its numbers down the sides, a
+  // vertical one across the top and the foot: both along the scroll, in the
+  // rolls. That is what a score saved with "On" asked for.
+  get pnDefaultAxis() { return this.cell.key == "horizontal" ? "L-R" : "T-B"; }
+
   // Define svg for "back" of scroll, i.e. visible on the left/right scrollers
   static verso = "url('data:image/svg+xml;base64," + btoa(`
   <!-- leather-worn-amber.svg -->
@@ -1695,19 +1743,14 @@ class ScrollLayout extends Layout {
       let [left] = this.snapPns();
       return pnToDiv(left, cursor);
     });
-    Object.assign(this.pagerLeft.elm.style, {
-      left: 0,
-      zIndex: 20,
-    });
+    // The edge each band sits on is a layout setting, applied in buildAux.
+    this.pagerLeft.elm.style.zIndex = 20;
     this.pagerRight = new Pager(this.props.RIGHT, (stash, adjusting, cursor) => {
       if (adjusting) return pnToDiv(Math.min(stash.pn + this.cell.geo.pgShow - 1, this.cell.geo.pgCount), cursor);
       let [, right] = this.snapPns();
       return pnToDiv(right, cursor);
     });
-    Object.assign(this.pagerRight.elm.style, {
-      right: 0,
-      zIndex: 20,
-    });
+    this.pagerRight.elm.style.zIndex = 20;
     this.leftRollShadow.style.background = this.rightRollShadow.style.background =
       `linear-gradient(to ${this.cell.key == "horizontal" ? "right" : "bottom"}, #666b 0, #0000 50%, #8888 100%)`;
   }
@@ -1723,7 +1766,7 @@ class ScrollLayout extends Layout {
     this.animated = animated;
     Object.assign(this, this.cell.stash);
     let { fit, gap, pgSnap, sash, score, pgShow } = this;
-    let { LEFT, RIGHT, TOP, WIDTH, HEIGHT, MAXWIDTH, MAXHEIGHT, INNERWIDTH, INNERHEIGHT } = this.props;
+    let { LEFT, RIGHT, TOP, BOTTOM, WIDTH, HEIGHT, MAXWIDTH, MAXHEIGHT, INNERWIDTH, INNERHEIGHT } = this.props;
     fit = fit.toLowerCase();
     clearChildren(sash);
     // Layout scroll g((eo)metry) in units of css pixels, and "as if"
@@ -1734,7 +1777,18 @@ class ScrollLayout extends Layout {
     gap /= 100; // gap % as fraction
 
 
-    g.rollGirth = this.pnShow == "On" ? Pager.width : Layout.margin;
+    // The bands sit either along the scroll -- in the rolls, where they have
+    // always been -- or across it, and either beside the pages or over them.
+    // Across the scroll they cost height in a horizontal layout and width in a
+    // vertical one, which is the point: a band is 45px of a dimension the fit
+    // may be fighting for, and over the pages it costs nothing at all.
+    let pnAxis = this.pnAxis();
+    // With the numbers off the bands keep the edges they would have had: they
+    // are hidden but still alive, and a hidden band parked across the pages
+    // would scrub the score where a tap means to turn the page.
+    let pnAlong = ((pnAxis ?? this.pnDefaultAxis) == "L-R") == (this.cell.key == "horizontal");
+    g.rollGirth = pnAxis != null && pnAlong && !this.pnOver() ? Pager.width : Layout.margin;
+    g.pnGirth = pnAxis != null && !pnAlong && !this.pnOver() ? Pager.width : 0;
     g.pgCount = this.score.pgs.length;
     g.pgShow = Math.min(pgShow, g.pgCount); // g.pgShow must be <= total page count
     g.pgSnap = Math.min(pgSnap, g.pgCount); // g.pgSnap must be <= total page count
@@ -1744,7 +1798,7 @@ class ScrollLayout extends Layout {
       g.gap = gap * g.pg[WIDTH];
       g.pg[HEIGHT] = score[MAXHEIGHT];
       g.scroll[WIDTH] = g.rollGirth + g.gap + (g.pg[WIDTH] + g.gap) * g.pgShow + g.rollGirth;
-      g.scroll[HEIGHT] = g.gap + g.pg[HEIGHT] + g.gap;
+      g.scroll[HEIGHT] = g.pnGirth + g.gap + g.pg[HEIGHT] + g.gap + g.pnGirth;
     } 
 
     if (fit == "auto" || fit == WIDTH) {
@@ -1752,7 +1806,7 @@ class ScrollLayout extends Layout {
       g.pg[WIDTH] = ((g.scroll[WIDTH] - g.rollGirth - g.rollGirth) / g.pgShow) / (1 + gap + gap/g.pgShow);
       g.gap = gap * g.pg[WIDTH];
       g.pg[HEIGHT] = Math.floor(g.pg[WIDTH] * (score[MAXHEIGHT] / score[MAXWIDTH]));
-      g.scroll[HEIGHT] = g.gap + g.pg[HEIGHT] + g.gap;
+      g.scroll[HEIGHT] = g.pnGirth + g.gap + g.pg[HEIGHT] + g.gap + g.pnGirth;
 
       if(fit == "auto") {
         // Check if layout will fit entirely within window. If not, recalculate with fit = HEIGHT;
@@ -1762,7 +1816,7 @@ class ScrollLayout extends Layout {
         if(layoutWidth > window[INNERWIDTH])
           fit = HEIGHT;
         else {
-          let layoutHeight = Math.round(Layout.margin * 2 + g.pg[HEIGHT] + g.gap * 2);
+          let layoutHeight = Math.round(Layout.margin * 2 + g.pg[HEIGHT] + g.gap * 2 + g.pnGirth * 2);
           if(layoutHeight > window[INNERHEIGHT]) fit = HEIGHT;          
         } 
       }
@@ -1770,7 +1824,7 @@ class ScrollLayout extends Layout {
 
     if (fit == HEIGHT) {
       g.scroll[HEIGHT] = window[INNERHEIGHT] - Layout.margin - Layout.margin;
-      g.pg[HEIGHT] = g.scroll[HEIGHT] / (1 + gap + gap);
+      g.pg[HEIGHT] = (g.scroll[HEIGHT] - g.pnGirth - g.pnGirth) / (1 + gap + gap);
       g.gap = gap * g.pg[HEIGHT];
 
       g.pg[WIDTH] = g.pg[HEIGHT] * score[MAXWIDTH] / score[MAXHEIGHT];
@@ -1792,7 +1846,9 @@ class ScrollLayout extends Layout {
 
     // scroll
     Object.assign(this.layout.style, {
-      [HEIGHT]: toEm(g.scroll[HEIGHT]),
+      // The cross dimension gets the same px-in, em-out treatment as the scroll
+      // dimension below, for the same reason: a band is px and does not scale.
+      [HEIGHT]: `calc(${toEm(g.scroll[HEIGHT])} + ${g.pnGirth * 2}px - ${toEm(g.pnGirth * 2)})`,
       // Not that scroll's WIDTH is set by adding rollGirth in px, then subtracting rollGirth in em's.
       // Initially, they are equal, so contribute nothing, but if/when the scroll is resized through em change,
       // their difference will account for delta between the pagers, which don't scale, and
@@ -1802,10 +1858,10 @@ class ScrollLayout extends Layout {
 
     // frame
     Object.assign(this.frame.style, {
-      [HEIGHT]: "100%",
+      [HEIGHT]: `calc(100% - ${g.pnGirth * 2}px)`,
       [WIDTH]: `calc(100% - ${g.rollGirth * 2}px`,
       [LEFT]: g.rollGirth + "px",
-      [TOP]: 0,
+      [TOP]: g.pnGirth + "px",
     });
 
     // sash — clear any residual transition; LEFT is set by pgGoTo below
@@ -1819,10 +1875,10 @@ class ScrollLayout extends Layout {
     // left/right roll position/size, plus drop shadow "caps" on top/bottom
     for (let roll of [this.leftRoll, this.rightRoll])
       Object.assign(roll.style, {
-        [HEIGHT]: "100%",
+        [HEIGHT]: `calc(100% - ${g.pnGirth * 2}px)`,
         [WIDTH]: g.rollGirth + "px",
         [roll === this.leftRoll ? LEFT : RIGHT]: 0,
-        [TOP]: 0,
+        [TOP]: g.pnGirth + "px",
        
         // box shadow adds caps on top & bottom or rolls — color via --roll-cap-color CSS var
       });
@@ -1834,9 +1890,17 @@ class ScrollLayout extends Layout {
         [WIDTH]: "200%", 
       });
 
-    this.leftRoll.append(this.pagerLeft.elm);
-    this.rightRoll.append(this.pagerRight.elm);
-    let pagerHidden = this.pnShow != "On";
+    // A band along the scroll goes in its roll, as it always has. Across the
+    // scroll it goes in the layout, in the strip reserved above. Over the pages
+    // it goes in the frame, which is the pages' own window -- a roll would clip
+    // it to Layout.margin, and the frame keeps it from straying off the paper.
+    let [pnA, pnB] = pnAlong ? [LEFT, RIGHT] : [TOP, BOTTOM];
+    this.pagerLeft.setPosition(pnA);
+    this.pagerRight.setPosition(pnB);
+    let pnHome = this.pnOver() ? this.frame : pnAlong ? null : this.layout;
+    (pnHome ?? this.leftRoll).append(this.pagerLeft.elm);
+    (pnHome ?? this.rightRoll).append(this.pagerRight.elm);
+    let pagerHidden = pnAxis == null;
     this.pagerLeft.setHidden(pagerHidden, Layout.margin);
     this.pagerRight.setHidden(pagerHidden, Layout.margin);
     this.pagerLeft.build();
@@ -2389,7 +2453,7 @@ class TableLayout extends Layout {
        left:toEm(left),
        top:toEm(top),
     });  
-    if(this.pnShow == "On") {
+    if(this.pnAxis() != null) {   // Table has no bands, so the edges do not apply
       // add a page number elm (or refresh, it elm already has a page number elm) to upper left corner of elm
       let pnElm = elm.getElementsByClassName("TableLayout__pn").item(0) || helm(`<div class="TableLayout__pn"></div>`);
       pnElm.pg = pg; // Pn div is clickable
@@ -2760,15 +2824,7 @@ class Pager {
     // position is one of "left", "right", "top", "bottom"
     Object.assign(this, dataIndex("tag", this.elm));
     this.formatFunc = formatFunc;
-    this.position = position;
-    this.props = ["left", "right"].includes(position) ? NORMAL_PROPS : ORTHO_PROPS;
-    let { WIDTH, HEIGHT } = this.props;
-    this.pager.style[WIDTH] = this.cursor.style[WIDTH] = this.cursor.style[HEIGHT] = Pager.width + "px";
-    this.pager.style[HEIGHT] = "100%";
-    if (position == "left") this.pager.style.left = 0;
-    else if (position == "right") this.pager.style.right = 0;
-    else if (position == "top") this.pager.style.top = 0;
-    else if (position == "bottom") this.pager.style.bottom = 0;
+    this.setPosition(position);
     this.bMarkTimer = new Schedule();
     this.cursorBackground = cssIndex("Pager", ".Pager__cursor", "background-color");
     this.ptrMsgBackground = cssIndex("ptrMsg", ".ptrMsg", "background-color");
@@ -2789,6 +2845,27 @@ class Pager {
     // Called when containing layout is about to be removed from dom.
     this.resizeObserver.disconnect();
     unlisten(this.pnListener, this.bookmarkListener, this.pointerListener);
+  }
+
+  setPosition(position) {
+    // Which edge the band sits on, and so which way it runs: "left"/"right" give
+    // a tall band whose numbers travel down it, "top"/"bottom" a wide one whose
+    // numbers travel across. The reader can change the edge from the Layout
+    // panel without reopening the score, so this is called on every build.
+    // @param position one of "left", "right", "top", "bottom"
+    this.position = position;
+    this.props = ["left", "right"].includes(position) ? NORMAL_PROPS : ORTHO_PROPS;
+    let { WIDTH, HEIGHT, TOP } = this.props;
+    // Every edge is named, not just the one in use: .Pager's own top:0 would
+    // otherwise win over an inline bottom:0 (an over-constrained box ignores
+    // bottom), leaving a band meant for the foot of the page at its head. The
+    // sizes go too, because buildCursor() sizes the cursor along the old axis.
+    Object.assign(this.pager.style, { top: "auto", bottom: "auto", left: "auto", right: "auto" });
+    Object.assign(this.cursor.style, { width: "", height: "", top: "", left: "" });
+    this.pager.style[WIDTH] = this.cursor.style[WIDTH] = this.cursor.style[HEIGHT] = Pager.width + "px";
+    this.pager.style[HEIGHT] = "100%";
+    this.pager.style[TOP] = 0;    // the band runs the full length of its edge
+    this.pager.style[position] = 0;
   }
 
   setHidden(hidden, narrowWidthPx) {
