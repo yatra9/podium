@@ -411,6 +411,32 @@ Numbers:
    <rect x="7" y="6" width="9" height="13.5" fill="#aaa" stroke="none"/>
    <text style="fill:currentColor;font-family:Bravura;" font-size="22" x="9.50" y="21">\uE262</text>`,
 
+// The four Numbers band icons share one page, so that what differs between them
+// is only where the bands lie: down the sides or across the ends, beside the
+// page or on it. The page is square because a band has to fit outside it on
+// either axis within the 24x24 box.
+"Numbers L-R":
+  `<path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M6 6h12v12H6Z"/>
+   <path style="fill:none;stroke:currentColor;stroke-width:.3" d="M7.5 8.5h9M7.5 10.75h9M7.5 13h9M7.5 15.25h9"/>
+   <rect x="1.5" y="6" width="3.5" height="12" fill="currentColor"/>
+   <rect x="19" y="6" width="3.5" height="12" fill="currentColor"/>`,
+
+"Numbers T-B":
+  `<path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M6 6h12v12H6Z"/>
+   <path style="fill:none;stroke:currentColor;stroke-width:.3" d="M7.5 8.5h9M7.5 10.75h9M7.5 13h9M7.5 15.25h9"/>
+   <rect x="6" y="1.5" width="12" height="3.5" fill="currentColor"/>
+   <rect x="6" y="19" width="12" height="3.5" fill="currentColor"/>`,
+
+"Numbers Inset":
+  `<path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M6 6h12v12H6Z"/>
+   <path style="fill:none;stroke:currentColor;stroke-width:.3" d="M7.5 8.5h9M7.5 10.75h9M7.5 13h9M7.5 15.25h9"/>
+   <rect x="20" y="6" width="3.5" height="12" fill="currentColor"/>`,
+
+"Numbers Over":
+  `<path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M6 6h12v12H6Z"/>
+   <path style="fill:none;stroke:currentColor;stroke-width:.3" d="M7.5 8.5h9M7.5 10.75h9M7.5 13h9M7.5 15.25h9"/>
+   <rect x="16.25" y="6" width="3.5" height="12" fill="currentColor"/>`,
+
 OK:
   `<circle cx="12" cy="12" r="9.5" fill="none" stroke="#000" stroke-width="1.2"/>
    <text x="12" y="16.5" text-anchor="middle" style="font-size:12;fill:#000">\u2713</text>`,

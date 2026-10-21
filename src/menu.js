@@ -508,7 +508,10 @@ class Menu {
           storage: "score", // layout settings (incl. pz pan-zoom) persist per-score, not as a global localStorage default
           stash: {
             fit: "Auto", // "Auto","Width","Height","None",
-            pnShow: "On", // "On" or "Off"
+            pnShow: "L-R", // "Off", "L-R" (bands down the sides) or "T-B" (across the ends).
+                           // "On", from a score saved before the edges could be
+                           // chosen, means whichever edges this layout used then.
+            pnPlace: "Inset", // "Inset" (bands beside the pages) or "Over" (on them)
             pace: 350, // pace: animation speed in msecs/flip
             pz: null, // user pan-zoom saved with the score. When set: { left, top, fontSize, w, h }; applied only when w/h match the current viewport (see Layout.userPz)
           },
@@ -520,7 +523,8 @@ class Menu {
           stash: {
             fit: "Auto", // "Auto", "Width","Height","None"
             gap: 0.2, // [0,10]% of fit dimension
-            pnShow: "On",
+            pnShow: "L-R", // see book cell
+            pnPlace: "Inset",
             pgShow: 2,
             pgSnap: 2, // -4:none, -3:visible, -2:1/4pg, -1:1/3 pg, 0:1/2 pg
             pace: 350, // msec/snap
@@ -534,7 +538,8 @@ class Menu {
           stash: {
             fit: "Auto", // "Auto", "Width","Height","None"
             gap: 0.2, // [0,10]% of fit dimension
-            pnShow: "On",
+            pnShow: "T-B", // see book cell
+            pnPlace: "Inset",
             pgShow: 1, // [1,_score_.pages.length)
             pgSnap: 0,  // i.e. 1/2 pg
             pace: 350, // msec/snap
