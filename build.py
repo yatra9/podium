@@ -814,6 +814,28 @@ if args.pages:
         # passes media straight through.
         doc_to_cache = ['./Guidebook.ja.html'] + [f'./assets/{name}' for name in doc_images]
 
+    # The face-landmark model and runtime that Wink page turning reads a wink
+    # with, where fetch-wink-assets.sh has fetched them. They are not
+    # precached: 17 MB is not something to spend on a reader who never turns
+    # the feature on, and the service worker keeps whatever it is asked for
+    # once, in a cache of its own that an app release does not discard. A
+    # deployment without them is one where the Wink tool says the model is
+    # missing, and nothing else is different.
+    wink_assets = os.path.join('lib', 'mediapipe')
+    wink_digest = None
+    if os.path.exists(os.path.join(wink_assets, 'face_landmarker.task')):
+        shutil.copytree(wink_assets, os.path.join(pages_dir, 'mediapipe'))
+        digest = hashlib.sha256()
+        for root, dirs, names in os.walk(os.path.join(pages_dir, 'mediapipe')):
+            dirs.sort()
+            for name in sorted(names):
+                with open(os.path.join(root, name), 'rb') as f:
+                    digest.update(f.read())
+        wink_digest = digest.hexdigest()[:12]
+    else:
+        print('  NOTE: lib/mediapipe is missing, so the deployment will have no'
+              ' Wink page turning; run fetch-wink-assets.sh to fetch it.')
+
     # The service worker serves the page from its cache, so a deployment whose
     # sw.js is byte-identical to the last one would go unnoticed: the browser
     # sees no new worker, never reinstalls, and keeps answering from the old
@@ -832,6 +854,14 @@ if args.pages:
     if worker.count(stamp) != 1:
         sys.exit(f'Error: cache name not found exactly once in src/sw.js: {stamp!r}')
     worker = worker.replace(stamp, f"const CACHE_NAME = 'podium-v2.3.0-{page_digest}';")
+    # The assets have a version of their own, so that re-pinning MediaPipe
+    # replaces them while a release of Podium leaves them alone.
+    asset_stamp = "const ASSET_CACHE_NAME = 'podium-assets-v1';"
+    if worker.count(asset_stamp) != 1:
+        sys.exit(f'Error: asset cache name not found exactly once in src/sw.js: {asset_stamp!r}')
+    if wink_digest:
+        worker = worker.replace(
+            asset_stamp, f"const ASSET_CACHE_NAME = 'podium-assets-v1-{wink_digest}';")
     doc_stamp = 'const docToCache = [];'
     if worker.count(doc_stamp) != 1:
         sys.exit(f'Error: precache list not found exactly once in src/sw.js: {doc_stamp!r}')

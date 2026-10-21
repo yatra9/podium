@@ -319,3 +319,107 @@ test("installing the worker really stores the guidebook", async ({ page }) => {
     });
   }
 });
+
+// The face-landmark model and runtime behind Wink page turning are 17 MB, so
+// they are deployed but never precached, and they are kept in a cache of their
+// own. The app's cache name carries the digest of the app, which means every
+// release renames it and the activate handler drops it -- and a model kept in
+// there would be downloaded again on every release, which is the one thing a
+// player on a phone at a rehearsal cannot afford.
+const winkDir = path.join(pagesDir, "mediapipe");
+
+// The files as build.py walks them: each directory's own files in name order,
+// then its subdirectories in name order.
+function winkFiles(dir = winkDir, under = "") {
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  const files = entries.filter(e => e.isFile()).map(e => under + e.name).sort();
+  const dirs = entries.filter(e => e.isDirectory()).map(e => e.name).sort();
+  return files.concat(...dirs.map(name => winkFiles(path.join(dir, name), under + name + "/")));
+}
+
+test("the model is deployed whole, and left out of the precache", async () => {
+  test.skip(!fs.existsSync(winkDir), "build/pages/mediapipe is missing; run fetch-wink-assets.sh");
+  const worker = fs.readFileSync(path.join(pagesDir, "sw.js"), "utf8");
+  const files = winkFiles();
+
+  // The runtime is no use without the model, and neither is any use without
+  // the loader, so a deployment carries all of them or none.
+  expect(files).toEqual([
+    "PROVENANCE.txt",
+    "face_landmarker.task",
+    "vision_bundle.mjs",
+    "wasm/vision_wasm_internal.js",
+    "wasm/vision_wasm_internal.wasm",
+  ]);
+
+  // Not one of them is in the install list: a reader who never turns Wink on
+  // never pays for it.
+  const precached = [...worker.matchAll(/^\s*'(\.\/[^']*)',$/gm)].map(m => m[1]);
+  expect(precached.filter(url => url.includes("mediapipe"))).toEqual([]);
+
+  // Their cache is named after them, so re-pinning MediaPipe replaces them
+  // while a release of Podium leaves them alone.
+  const hash = crypto.createHash("sha256");
+  for (const name of files) hash.update(fs.readFileSync(path.join(winkDir, name)));
+  const digest = hash.digest("hex").slice(0, 12);
+  expect(worker).toContain(`const ASSET_CACHE_NAME = 'podium-assets-v1-${digest}';`);
+  // And the app's digest does not cover them, or the two would move together.
+  expect(worker).not.toContain(`const CACHE_NAME = 'podium-v2.3.0-${digest}';`);
+
+  // The source must stay unstamped, or the build would have nothing to replace.
+  const source = fs.readFileSync(path.join(__dirname, "..", "src", "sw.js"), "utf8");
+  expect(source).toContain("const ASSET_CACHE_NAME = 'podium-assets-v1';");
+  // Both current caches have to survive the sweep. Naming only one of them is
+  // exactly the bug this whole arrangement exists to avoid, and it would show
+  // up as a 17 MB download months later rather than as a failure here.
+  expect(source).toMatch(
+    /cacheName !== CACHE_NAME && cacheName !== ASSET_CACHE_NAME/);
+});
+
+test("the worker files the model under the cache that survives a release", async ({ page }) => {
+  test.skip(!fs.existsSync(winkDir), "build/pages/mediapipe is missing; run fetch-wink-assets.sh");
+  // Asking for the loader the way the Wink tool does has to leave it in the
+  // asset cache. The runtime-caching conditions are easy to fall foul of by
+  // accident -- a query string on the URL, or a response the worker reads as
+  // cross-origin, and it is silently never stored -- and the symptom is a
+  // feature that simply does not work offline.
+  await page.goto("/pages/index.html");
+  await page.evaluate(async () => {
+    await navigator.serviceWorker.register("sw.js");
+    await navigator.serviceWorker.ready;
+    // This page was loaded before the worker existed, so it is not controlled
+    // by it yet and a fetch would go straight past it. The worker claims its
+    // clients on activation, which is what has to land first.
+    if (!navigator.serviceWorker.controller)
+      await new Promise(done => navigator.serviceWorker
+        .addEventListener("controllerchange", done, { once: true }));
+    await fetch("mediapipe/vision_bundle.mjs").then(response => response.text());
+  });
+
+  // The worker caches without awaiting it, so where the entry landed settles
+  // a moment after the response does.
+  const filed = async () => page.evaluate(async () => {
+    const where = {};
+    for (const name of await caches.keys()) {
+      const cache = await caches.open(name);
+      for (const request of await cache.keys())
+        if (new URL(request.url).pathname.includes("mediapipe"))
+          where[name] = (where[name] ?? 0) + 1;
+    }
+    return where;
+  });
+
+  try {
+    await expect.poll(filed, { timeout: 10_000 }).toEqual({
+      [`podium-assets-v1-${crypto.createHash("sha256")
+        .update(Buffer.concat(winkFiles().map(n => fs.readFileSync(path.join(winkDir, n)))))
+        .digest("hex").slice(0, 12)}`]: 1,
+    });
+  } finally {
+    await page.evaluate(async () => {
+      for (const registration of await navigator.serviceWorker.getRegistrations())
+        await registration.unregister();
+      for (const key of await caches.keys()) await caches.delete(key);
+    });
+  }
+});

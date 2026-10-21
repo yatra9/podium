@@ -15,7 +15,20 @@ MIME_MAP = {
    ".jpg": "image/jpeg",
    ".webm": "video/webm",
    ".webmanifest": "application/manifest+json",
+   # The face-landmark runtime behind Wink page turning. A .wasm has to arrive
+   # as application/wasm or the browser refuses to compile it as it streams,
+   # and falls back to buffering the whole 13 MB first.
+   ".wasm": "application/wasm",
+   ".task": "application/octet-stream",
 }
+
+# A charset means nothing to a font, an image or a WebAssembly module, and
+# saying it anyway is how a binary ends up declared as text.
+TEXTUAL = ("text/", "application/javascript", "application/manifest+json")
+
+def contentType(path):
+   mimeType = MIME_MAP.get(os.path.splitext(path)[1], "application/octet-stream")
+   return mimeType + ("; charset=utf-8" if mimeType.startswith(TEXTUAL) else "")
 
 logger = logging.getLogger(__name__)
 
@@ -81,9 +94,7 @@ class PodiumHandler(http.server.SimpleHTTPRequestHandler):
 
             if os.path.exists(fullPath):
                 self.send_response(200)
-                filename, extension = os.path.splitext(path)
-                mime_type = MIME_MAP.get(extension, "application/octet-stream")
-                self.send_header("content-type", mime_type + "; charset=utf-8")
+                self.send_header("content-type", contentType(path))
                 self.send_header("Accept-Ranges", "bytes")
                 self.send_header("Content-Length", os.path.getsize(fullPath))
                 self.end_headers()
@@ -120,9 +131,7 @@ class PodiumHandler(http.server.SimpleHTTPRequestHandler):
             if os.path.exists(fullPath):
               logger.debug(f"GET: {fullPath}")
               self.send_response(200)
-              filename, extension = os.path.splitext(path)
-              mime_type = MIME_MAP.get(extension, "application/octet-stream")
-              self.send_header("content-type", mime_type + "; charset=utf-8")
+              self.send_header("content-type", contentType(path))
               self.send_header("connection", "close")
               self.send_header("content-length", os.path.getsize(fullPath))
               self.send_header("cache-control", "no-store")

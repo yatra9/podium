@@ -54,6 +54,12 @@ jsconfig.json
 lib/fabric.js
 lib/pdf-lib.js
 
+# The face-landmark model and runtime that Wink page turning reads a wink with:
+# 17 MB of somebody else's build output, fetched and checksummed by
+# fetch-wink-assets.sh. Everything that reads them treats them as optional, so
+# a checkout without them still builds and still runs.
+lib/mediapipe/
+
 # AI review / notes files
 GEMINI.md
 CLAUDE_REVIEW.md

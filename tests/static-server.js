@@ -12,6 +12,10 @@ const mimeTypes = {
   ".pdf": "application/pdf",
   ".png": "image/png",
   ".webmanifest": "application/manifest+json",
+  // The face-landmark runtime behind Wink page turning. A .wasm has to arrive
+  // as application/wasm or the browser refuses to compile it as it streams.
+  ".wasm": "application/wasm",
+  ".task": "application/octet-stream",
 };
 
 http.createServer((request, response) => {
