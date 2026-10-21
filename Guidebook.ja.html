@@ -23,7 +23,7 @@
   translation was last brought up to date; build.py --pages reports a mismatch
   and prints the digest to paste here once the translation has caught up.
 
-  TRANSLATED-FROM: 0b14a2824562fd91
+  TRANSLATED-FROM: 693d0ee3e0289606
 
   UI names (cell, panel, and button labels) are deliberately left in English,
   because that is what the app itself shows; the keyword index is left in
@@ -1602,7 +1602,7 @@ function closeVideo(event, container) {
    <div class="note">フリングの速さは水平方向（Vertical レイアウトでは垂直方向）だけで測られます。まっすぐ水平にフリングすると、同じ力でいちばん速くめくれます。ゆっくり加減したページめくりをしたいときは、斜め（たとえば 45°）にフリングしてみてください。人によっては、水平方向にゆっくり動かそうとするより、こちらのほうがやりやすいです。</div>
 
     <ul>
-      <li><strong>ページャー:</strong> Book、Horizontal、Vertical のレイアウトには譜面の左右（Vertical では上下）に余白の帯があり、それぞれドラッグできるページ番号（<em>ページャーカーソル</em>）が入っています。左のカーソルは見えている最初のページの番号、右のカーソルは最後のページの番号を示します。カーソルをドラッグすると譜面の中を素早く移動できます。ドラッグしているあいだ、選んでいるページ番号が指に付いて浮かんで表示されます。指でカーソルそのものが隠れてしまうときに役立ちます。長い譜面でより細かく合わせたいときは、カーソルを帯から離す方向へドラッグしてください。離れるほど細かく効くようになり、目当ての 1 ページにぴったり着けられます。ページャーは、そのレイアウトのパネルにある <strong>Numbers</strong> ボタンで表示を切り替えられます。切ると帯はごく細くなりページ番号も隠れますが、帯の上でのドラッグによる移動は引き続き効き、浮かぶ表示も出ます。</li>
+      <li><strong>ページャー:</strong> Book、Horizontal、Vertical のレイアウトには譜面の向かい合う二つの端に余白の帯があり、それぞれドラッグできるページ番号（<em>ページャーカーソル</em>）が入っています。先頭側（左、または上）のカーソルは見えている最初のページの番号、末尾側のカーソルは最後のページの番号を示します。カーソルをドラッグすると譜面の中を素早く移動できます。ドラッグしているあいだ、選んでいるページ番号が指に付いて浮かんで表示されます。指でカーソルそのものが隠れてしまうときに役立ちます。長い譜面でより細かく合わせたいときは、カーソルを帯から離す方向へドラッグしてください。離れるほど細かく効くようになり、目当ての 1 ページにぴったり着けられます。そのレイアウトのパネルにある <strong>Numbers</strong> のボタンで、帯をどちらの一対の端に置くかを選べます。<strong>L-R</strong> は譜面の左右、<strong>T-B</strong> は上下、<strong>Off</strong> はページ番号を出しません。帯は、それが沿っている方向から 45 ピクセルほどを取ります。ですから、画面に余裕のある方向へ帯を移せば、譜面に使える面積が増えます。縦長のページを横長の画面で見るときは左右に余裕があり、同じページを縦長の画面で見るときは上下に余裕があります。2 段目のボタンは、帯が自分の余白を取るか（<strong>Inset</strong>）、ページそのものの端に重ねて描くか（<strong>Over</strong>）を決めます。重ねれば譜面の面積はまったく減りません。彫版された譜面はたいてい、ページ番号を置けるだけの余白を持っています。番号を切ると帯はごく細くなりページ番号も隠れますが、帯の上でのドラッグによる移動は引き続き効き、浮かぶ表示も出ます。</li>
     </ul>
 
     <h4 id="chapter-5-bookmarks">ブックマーク</h4>
@@ -2767,6 +2767,7 @@ function closeVideo(event, container) {
         <dt>Grip</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
         <dt>Group selection</dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
         <dt>Guide<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-guide"/></svg></dt><dd> &mdash; <a href="#chapter-8-guide">8.3</a></dd>
+        <dt>Gutter</dt><dd> &mdash; <a href="#chapter-5-page-turning">Ch.5</a></dd>
     </dl>
     <div class="idx-letter">H</div>
     <dl>
@@ -2824,7 +2825,7 @@ function closeVideo(event, container) {
     </dl>
     <div class="idx-letter">P</div>
     <dl>
-        <dt>Page numbers</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-7-numbers">7.1</a></dd>
+        <dt>Page numbers</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-7-numbers">7.1</a>, <a href="#chapter-5-page-turning">Ch.5</a></dd>
         <dt>Page ordering</dt><dd> &mdash; <a href="#chapter-5-table">5.4</a></dd>
         <dt>Page range</dt><dd> &mdash; <a href="#chapter-4-print">4.4</a></dd>
         <dt>Page Ring</dt><dd> &mdash; <a href="#chapter-7">Ch.7</a></dd>
