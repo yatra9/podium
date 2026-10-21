@@ -191,6 +191,36 @@ test("a recording keeps every score the model read, and no picture", async ({ pa
   expect(csv.text).not.toMatch(/data:|base64|blob:/);
 });
 
+// Service workers are blocked for this one: once a run of these tests has
+// fetched the model, the worker answers for it from its own cache, which is
+// the point of the whole arrangement but leaves nothing for a route to refuse.
+test.describe("a build with no model", () => {
+  test.use({ serviceWorkers: "block" });
+
+  test("says so, instead of failing obscurely", async ({ page }) => {
+    // The model is not in the repository, so building without fetching it is
+    // a thing that will happen. What the reader must not get is a WebAssembly
+    // compile error about a magic word, which is what a 404 turns into by the
+    // time it surfaces.
+    await page.route("**/mediapipe/**", route => route.fulfill({ status: 404, body: "" }));
+    await page.goto("/podium.html");
+    await page.waitForFunction(() => !!window._menu_?.rings?.more?.cells?.wink);
+
+    const failed = await page.evaluate(async () => {
+      const turner = window._WinkTurner_.it;
+      const ok = await turner.on();
+      return { ok, status: turner.status, detail: turner.detail, running: turner.running };
+    });
+
+    expect(failed.ok).toBe(false);
+    expect(failed.running).toBe(false);
+    expect(failed.status).toBe("failed");
+    expect(failed.detail).toContain("fetch-wink-assets.sh");
+    // And nothing is left watching: no camera was opened, and no ring.
+    await expect(page.locator(".WinkHud")).not.toHaveClass(/WinkHud-shown/);
+  });
+});
+
 test("a finished wink turns the page the way a pedal does", async ({ page }) => {
   // The gesture is checked without a camera in wink.spec.js; what matters here
   // is that a finished one reaches the score, through the same road a pedal

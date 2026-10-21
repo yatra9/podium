@@ -31,6 +31,9 @@
 - On-screen piano keyboard with assisted tuning and pitch detection.
 - Audio/video recorder with instant replay.
 - Stopwatch and clock.
+- Wink page turning: hold one eye shut to turn the page, for players whose
+  hands are both busy. The camera is read on the device and nothing it sees is
+  sent anywhere.
 
 ## Browser Extension
 
@@ -63,6 +66,18 @@ mise exec -- python -m pip install -r requirements-dev.txt
 mise exec -- npm install
 mise exec -- npx playwright install chromium
 ```
+
+Wink page turning reads a wink with a face-landmark model and a WebAssembly
+runtime. They are 17 MB and are not kept in the repository, so fetch them
+once against their pinned checksums:
+
+```bash
+sh fetch-wink-assets.sh
+```
+
+Everything that reads them treats them as optional: without them the build
+still builds and the app still runs, the Wink tool reports that the model is
+missing, and the Wink tests skip.
 
 Run project tools with `mise exec --`; this repository does not use
 `mise activate`.
