@@ -836,6 +836,15 @@ class Layout {
     }
   }
 
+  pagerClaim(e) {
+    // Offer a press to the page-number bands before reading it as a page turn.
+    // A band answers for a little of the page beside it, where its bookmark
+    // tabs overhang, and for a little of the margin outside it: see
+    // Pager.claim(). Table has no bands.
+    // @return whether a band took the press.
+    return !!(this.pagerLeft?.tryClaim(e) || this.pagerRight?.tryClaim(e));
+  }
+
   centerLT(otherStyles = {}) {
     // Compute {left,top} style coords that, when applied to this.elm, will center this.elm's firstChild,
     // *but* enforce that it's top left is at least Layout.margin px from viewport's top left corner.
@@ -1192,6 +1201,10 @@ class BookLayout extends Layout {
   }
 
   async onDown(e) {
+    // Asked before anything else, and before any await: a bookmark tab reaches
+    // a little way over the page it marks, and a finger there means the tab,
+    // not the page turn it is lying on.
+    if (this.pagerClaim(e)) return;
     let gen = this.navGen;
     if (this.inOp && this.closeFunc) {
       // This block runs when a pointer event is received while a sequence of
@@ -1981,6 +1994,8 @@ class ScrollLayout extends Layout {
   }
 
   async onDown(e) {
+    // see BookLayout.onDown
+    if (this.pagerClaim(e)) return;
     let gen = this.navGen;
     if (this.inOp) {
       this.commitAnimId++;
@@ -2846,6 +2861,8 @@ class Pager {
   // a long score, which is neither visible nor catchable, and the tab is the
   // only exact target the band has.
   static tabMin = 10 / _dvPxRt_; // px
+  static tabReach = 20 / _dvPxRt_; // px of band one tab answers for, at the least
+  static reach = 15 / _dvPxRt_; // px either lane answers for beyond the band's edge
 
   elm = helm(
     `<div data-tag="pager" class="Pager notranslate" translate="no">
@@ -2960,8 +2977,77 @@ class Pager {
     });
   }
 
-  onDown(e) {
+  tabClaims(box) {
+    // Which stretch of band each tab answers for, in client coordinates along
+    // it. A tab's own page is a pixel or two of a long band, so each claims a
+    // finger's worth, and neighbours divide the ground between them at the
+    // midpoint so that no point ever belongs to two.
+    let { HEIGHT, Y } = this.props;
+    let pgCount = _score_.pgs.length;
+    let travel = box[HEIGHT] - Pager.width;
+    let marks = [];
+    _score_.pgs.forEach((pg, i) => {
+      // The middle of the page's own stretch: where buildBookmarks() draws it.
+      if (pg.bookmark) marks.push({ pn: i + 1, at: box[Y] + Pager.width / 2 + (travel * (i + 0.5)) / pgCount });
+    });
+    let reach = Math.max(travel / pgCount, Pager.tabReach) / 2;
+    return marks.map(({ pn, at }, i) => ({
+      pn,
+      from: Math.max(at - reach, i > 0 ? (marks[i - 1].at + at) / 2 : -Infinity),
+      to: Math.min(at + reach, i + 1 < marks.length ? (at + marks[i + 1].at) / 2 : Infinity),
+    }));
+  }
+
+  claim(e) {
+    // What a finger at this point is asking the band for: a tab, as {pn}, or
+    // "scrub" to mean the page its position stands for, or null for nothing to
+    // do with the band at all.
+    //
+    // Worked out by arithmetic rather than left to whichever element the finger
+    // landed on, because both of the things a band is asked for want more room
+    // than the band has. So each lane reaches a little past the band, on the
+    // side that costs least: tabs over the page they mark, where a tab is drawn
+    // overhanging anyway, and scrubbing out into whatever margin the window has
+    // to spare, because a band's outer edge is usually the screen's. Arithmetic
+    // also reaches where an element cannot: a tab that the roll it sits in
+    // clips, or that the cursor is drawn over.
+    //
+    // Where no tab is near, the whole thickness of the band means the position,
+    // exactly as it did before there were lanes -- so a tab never costs the
+    // reader the pages around it.
+    if (!_score_ || this.pager.classList.contains("Pager--hidden")) return null;
+    let { WIDTH, HEIGHT, X, Y, CLIENTX, CLIENTY, INNERWIDTH } = this.props;
+    let box = getBox(this.pager);
+    let [along, across] = [e[CLIENTY], e[CLIENTX]];
+    if (along < box[Y] || along > box[Y] + box[HEIGHT]) return null;
+    // Tabs are drawn on the band's inner flank, overhanging the page; it is the
+    // outer flank that has the window's margin behind it.
+    let inward = ["left", "top"].includes(this.position) ? 1 : -1;
+    let beyond = (dir) => (across - box[X] - (dir > 0 ? box[WIDTH] : 0)) * dir;
+    if (beyond(inward) <= Pager.reach && (across - box[X] - box[WIDTH] / 2) * inward > 0) {
+      let tab = this.tabClaims(box).find((claim) => along >= claim.from && along <= claim.to);
+      if (tab) return tab;
+    }
+    let spare = inward > 0 ? box[X] : window[INNERWIDTH] - box[X] - box[WIDTH];
+    if (beyond(inward) <= 0 && beyond(-inward) <= Math.min(Pager.reach, spare)) return "scrub";
+    return null;
+  }
+
+  tryClaim(e) {
+    // Offer the band a press that landed near it rather than on it.
+    // @return whether the band took the press.
+    if (e.taken || !this.claim(e)) return false;
+    this.onDown(e, true);
+    return true;
+  }
+
+  onDown(e, outside = false) {
     e.taken = true ;
+    // A band down the sides scrubs the way the background's own swipe moves
+    // (see Gestures.watch), so it cannot share the strip of margin it answers
+    // for: one long scrub would park the menu as well. Bands across the ends
+    // scrub the other way, and leave the swipe to the background.
+    if (outside && this.props === NORMAL_PROPS) e.swipeTaken = true;
     e.stopImmediatePropagation(); // don't let event propagate to the layout
     let drag = new Drag(e) ;
     let { TOP, WIDTH, HEIGHT, CLIENTX, CLIENTY, X, Y } = this.props;
@@ -2969,12 +3055,15 @@ class Pager {
     let pgCount = _score_.pgs.length;
     let cursorBox = getBox(cursor);
     let pagerBox = getBox(pager);
-    pager.setPointerCapture(e.pointerId);
+    // A press from outside leaves the capture where it is -- the background has
+    // it, and the move and up listeners below are on the body in any case.
+    if (!outside) pager.setPointerCapture(e.pointerId);
     cursor.classList.add("Pager__cursor-active");
 
-    // A tab is an exact target: a finger on one aims at the page it marks,
-    // whatever that page is worth in pixels of band.
-    let tab = e.target.closest?.('[data-tag="bookmark"]');
+    // A tab is an exact target: a finger in one's reach aims at the page it
+    // marks, whatever that page is worth in pixels of band.
+    let claimed = this.claim(e);
+    let tab = claimed && claimed != "scrub" ? claimed : null;
     // The page the band was showing before this finger landed. A long press
     // works on that page, not on the one under the finger: a band is a pixel or
     // two per page in a long score, so the page under the finger is a guess,
@@ -3024,9 +3113,10 @@ class Pager {
     };
 
     setCursor(e[CLIENTY], 0) ;
-    // The readout is built before the cursor is placed, so a press on a tab
-    // would still be announcing the page we came from.
-    if (tab) this.formatFunc(_score_.numbers, true, ptrDiv);
+    // The readout is built before the cursor is placed, and only redrawn once
+    // the finger moves, so a press that stays put was announcing the page we
+    // came from rather than the one it is about to open.
+    this.formatFunc(_score_.numbers, true, ptrDiv);
 
     if (bMark) this.bMarkTimer.run(_gs_, () => {
       let pg = _score_.pgs[(tab ? tab.pn : pnAtDown) - 1];
@@ -3037,28 +3127,47 @@ class Pager {
       // gesture with it, so that lifting the finger does not then travel to
       // wherever it happened to be resting.
       bMarked = true;
-      _score_.numbers.pn = pnAtDown;
-      this.buildCursor(); // returns the cursor, and its colour, to that page
+      this.give(pnAtDown);
+      this.formatFunc(_score_.numbers, true, ptrDiv);
       _body_.dispatchEvent(new CustomEvent("BOOKMARK"));
     });
 
-    let mv = listen(pager, "pointermove", (emv) => {
+    // On the body, and filtered by pointer, rather than on the band: a press
+    // from outside leaves the capture with the background, which would then
+    // keep these from the band altogether.
+    let mine = (ev) => ev.pointerId == e.pointerId;
+    let mv = listen(_body_, "pointermove", (emv) => {
+      if (!mine(emv)) return;
       drag.mv(emv) ;
       if(drag.moved) this.bMarkTimer.cancel();
       setCursor(emv[CLIENTY], Math.abs(emv[CLIENTX] - cursorBox[X] - cursorBox[WIDTH]/2));
-    });
+    }, { capture: true });
 
-    listen(pager, "pointerup", (eup) => {
-        unlisten(mv);
+    let up = listen(_body_, "pointerup", (eup) => {
+        if (!mine(eup)) return;
+        unlisten(mv, up);
         this.cursor.classList.remove("Pager__cursor-active");
         this.bMarkTimer.cancel();
         if (bMarked) return; // the long press has had this gesture, page and all
+        // A press that came from the margin may still turn out to be the
+        // background's own swipe, which is settled at the end by how far the
+        // finger went. Where the band left that gesture to the background (see
+        // swipeTaken above), the swipe's reading of it wins.
+        if (outside && !e.swipeTaken && Math.abs(eup.clientY - e.clientY) > _swipeDelta_())
+          return this.give(pnAtDown);
         setCursor(eup[CLIENTY], Math.abs(eup[CLIENTX] - cursorBox[X] - cursorBox[WIDTH]/2));
         this.buildCursor();
         _body_.dispatchEvent(new CustomEvent("NUMBERS", { detail: {sender:this, tag:"pn" }}));
       },
-      { once: true }
+      { capture: true }
     );
+  }
+
+  give(pn) {
+    // Hand a page back: the gesture turned out not to be a scrub after all, so
+    // the page it was reading on the way past is not the reader's answer.
+    _score_.numbers.pn = pn;
+    this.buildCursor(); // returns the cursor, and its colour, to that page
   }
 }
 

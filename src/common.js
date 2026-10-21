@@ -90,6 +90,11 @@ window._dvPxRt_ = 1 + (devicePixelRatio - 1) * 0.3;
 window._gs_ = 618; // golden section (reciprocal) msec (.618 seconds)
 window._gsgs_ = (_gs_ * _gs_) / 1000; // shorter golden section!
 window._sliderPrecision_ = 4; // sensitivity multiplier for slider/pager precision mode
+// How far a finger must travel for a press on the background to be the up/down
+// swipe that parks the menu or toggles fullscreen (see Gestures.watch). Shared,
+// because a page-number band answers for a strip of that background and has to
+// know when the swipe's reading of the gesture wins over its own.
+window._swipeDelta_ = () => Math.min(innerWidth, innerHeight) * 0.15;
 window._zTop_ = 300; // continuously incrementing z-index counter for panels, menu, surfaces
 window._mobile_ = window.matchMedia('(pointer: coarse)').matches;
 window._msPerObj_ = 1; // for pdf printing, see score.toPdf()
