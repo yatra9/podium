@@ -2681,8 +2681,10 @@ e.taken = true ;
           pg.bookmark = null;
           pnElm.style.background = "unset";
         } else pnElm.style.background = pg.bookmark = nextBkColor();
+        // Inside the timer: dispatched on the way in, as it was, it announced a
+        // bookmark that had not been made yet (and none of the one that was).
+        _body_.dispatchEvent(new CustomEvent("BOOKMARK"));
       });
-      _body_.dispatchEvent(new CustomEvent("BOOKMARK"));
     };
 
     // Note: code works around a race condition...if await this.pgGoTo(pn) takes
@@ -2840,6 +2842,10 @@ class Pager {
 
   static id = 0;
   static width = 45 / _dvPxRt_; // px
+  // Shortest a bookmark tab is drawn. A tab's own page is worth 1-2px of band in
+  // a long score, which is neither visible nor catchable, and the tab is the
+  // only exact target the band has.
+  static tabMin = 10 / _dvPxRt_; // px
 
   elm = helm(
     `<div data-tag="pager" class="Pager notranslate" translate="no">
@@ -2926,7 +2932,16 @@ class Pager {
     let { LEFT, HEIGHT, TOP, WIDTH } = this.props;
     for (let elm of [...this.elm.children]) if (elm.dataset.tag == "bookmark") elm.remove();
     let pgCount = _score_.pgs.length;
-    let pgSpan = 100 / pgCount;
+    // A tab marks the stretch of band that reaches its page, which is not the
+    // same as its share of the band: the cursor is a square that travels
+    // between the ends, so the first page's stretch starts half a cursor in and
+    // the whole travel is a cursor shorter than the band. Drawn as a plain
+    // fraction of the band a tab sat up to half a cursor away from where a
+    // finger has to land to reach it -- twenty pages out in a long score. Left
+    // as a calc() so that rescaling the layout needs no rebuild, as with the
+    // cursor's own position.
+    let span = `(100% - ${Pager.width}px)`;
+    let length = `max(${span} / ${pgCount}, ${Pager.tabMin}px)`;
     // bookmarks for positions right and bottom are on opposite side of those for left and top
     let leftPercent = ["left", "top"].includes(this.position) ? 70 : -10;
 
@@ -2934,9 +2949,10 @@ class Pager {
       if(!pg.bookmark) return;
       let elm = helm(
         `<div data-tag="bookmark" class="Pager__bookmark"
-         style="${TOP}:${i * pgSpan}%;
-           ${HEIGHT}:${pgSpan}%;${WIDTH}:40%;${LEFT}:${leftPercent}%"></div>`
+         style="${TOP}:calc(${Pager.width / 2}px + ${span} * ${(i + 0.5) / pgCount} - ${length} / 2);
+           ${HEIGHT}:${length};${WIDTH}:40%;${LEFT}:${leftPercent}%"></div>`
       );
+      elm.pn = i + 1; // the page this tab is a target for
       elm.style.backgroundColor =
         typeof pg.bookmark == "string" && CSS.supports("color", pg.bookmark)
           ? pg.bookmark : "#ff0000";
@@ -2956,13 +2972,35 @@ class Pager {
     pager.setPointerCapture(e.pointerId);
     cursor.classList.add("Pager__cursor-active");
 
+    // A tab is an exact target: a finger on one aims at the page it marks,
+    // whatever that page is worth in pixels of band.
+    let tab = e.target.closest?.('[data-tag="bookmark"]');
+    // The page the band was showing before this finger landed. A long press
+    // works on that page, not on the one under the finger: a band is a pixel or
+    // two per page in a long score, so the page under the finger is a guess,
+    // and a reader asking for a bookmark has always meant the page being read.
+    let pnAtDown = _score_.numbers.pn;
+    let travel = pagerBox[HEIGHT] - cursorBox[HEIGHT];
+    // Only a press on a tab, or near enough the cursor to be pointing at it, is
+    // a bookmark press. Further off it is a finger that meant to tap a distant
+    // page and lingered, and it stays a tap -- silently bookmarking a page the
+    // reader never asked about is worse than a slow page turn. A hidden band
+    // draws neither cursor nor tabs, so there is nothing there to aim at.
+    let bMark =
+      !pager.classList.contains("Pager--hidden") &&
+      (!!tab ||
+        Math.abs(e[CLIENTY] - cursorBox[Y] - cursorBox[HEIGHT] / 2) <= Pager.width * 1.5);
+    let bMarked = false; // a long press consumes the gesture: see pointerup
+
     // display:block (overriding .floatingMsg's flex): the page number is drawn with
     // zero-advance Bravura time-sig glyphs whose ink overflows the box; iOS/WebKit
     // clips that overflow inside a flex item, so the readout shows blank. Block layout
     // paints it (same as the cursor, which is why the cursor renders fine).
     let ptrDiv = ptrMsg(e, (e,div) => this.formatFunc(_score_.numbers, true, div) && false, `width: ${cursor.style.width};display:block;text-align:center;`);
     let prevPos = e[CLIENTY];
-    let cursorTop = clamp(e[CLIENTY] - pagerBox[Y] - cursorBox[HEIGHT] / 2, 0, pagerBox[HEIGHT] - cursorBox[HEIGHT]);
+    let cursorTop = tab
+      ? ((tab.pn - 0.5) * travel) / pgCount // the middle of the page's own stretch
+      : clamp(e[CLIENTY] - pagerBox[Y] - cursorBox[HEIGHT] / 2, 0, travel);
     let cursorOffset = pagerBox[Y] + cursorBox.height ;
 
     let setCursor = (clientPos, delta) => {
@@ -2971,10 +3009,10 @@ class Pager {
       let t = Math.max(0, delta / pagerBox[WIDTH] - 0.5);
       let unitsPerPx = pgCount / pagerBox[HEIGHT];
       let sensitivity = 1 + t * unitsPerPx * _sliderPrecision_;
-      cursorTop = clamp(cursorTop + dPos / sensitivity, 0, pagerBox[HEIGHT] - cursorBox[HEIGHT]);
+      cursorTop = clamp(cursorTop + dPos / sensitivity, 0, travel);
       cursor.style[TOP] = cursorTop + "px";
       // pn calculation will equal pgCount at last pixel of slider, so we need Math.min
-      _score_.numbers.pn = Math.min(Math.floor(pgCount * cursorTop / (pagerBox[HEIGHT] - cursorBox[HEIGHT])) + 1, pgCount);
+      _score_.numbers.pn = Math.min(Math.floor(pgCount * cursorTop / travel) + 1, pgCount);
       // are we at a bookmark? 
       let bkCl = _score_.pgs[_score_.numbers.pn -1].bookmark;
       cursor.style.color = bkCl || "";
@@ -2986,22 +3024,21 @@ class Pager {
     };
 
     setCursor(e[CLIENTY], 0) ;
+    // The readout is built before the cursor is placed, so a press on a tab
+    // would still be announcing the page we came from.
+    if (tab) this.formatFunc(_score_.numbers, true, ptrDiv);
 
-    this.bMarkTimer.run(_gs_, () => {
-      let pn = _score_.numbers.pn;
-      let pg = _score_.pgs[pn - 1];
-      if (pg.bookmark) {
-        pg.bookmark = null;
-        cursor.style.color = "";
-        ptrDiv.style.backgroundColor = "";
-        ptrDiv.style.color = "";
-      }
-      else {
-        let bkCl = pg.bookmark = nextBkColor();
-        cursor.style.color = bkCl;
-        ptrDiv.style.backgroundColor = bkCl;
-        ptrDiv.style.color = contrastColor(bkCl);
-      }
+    if (bMark) this.bMarkTimer.run(_gs_, () => {
+      let pg = _score_.pgs[(tab ? tab.pn : pnAtDown) - 1];
+      let bkCl = (pg.bookmark = pg.bookmark ? null : nextBkColor());
+      ptrDiv.style.backgroundColor = bkCl || "";
+      ptrDiv.style.color = bkCl ? contrastColor(bkCl) : "";
+      // The press was a bookmark, not a scrub: hand the page back and take the
+      // gesture with it, so that lifting the finger does not then travel to
+      // wherever it happened to be resting.
+      bMarked = true;
+      _score_.numbers.pn = pnAtDown;
+      this.buildCursor(); // returns the cursor, and its colour, to that page
       _body_.dispatchEvent(new CustomEvent("BOOKMARK"));
     });
 
@@ -3012,12 +3049,11 @@ class Pager {
     });
 
     listen(pager, "pointerup", (eup) => {
-        setCursor(eup[CLIENTY], Math.abs(eup[CLIENTX] - cursorBox[X] - cursorBox[WIDTH]/2));
         unlisten(mv);
-
-
         this.cursor.classList.remove("Pager__cursor-active");
         this.bMarkTimer.cancel();
+        if (bMarked) return; // the long press has had this gesture, page and all
+        setCursor(eup[CLIENTY], Math.abs(eup[CLIENTX] - cursorBox[X] - cursorBox[WIDTH]/2));
         this.buildCursor();
         _body_.dispatchEvent(new CustomEvent("NUMBERS", { detail: {sender:this, tag:"pn" }}));
       },
