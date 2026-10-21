@@ -1,0 +1,2938 @@
+<!--
+  Copyright 2025 Glendon Diener. All rights reserved.
+
+  Adding icons:
+  1. Find the icon in src/icon.js (in the iconPaths object)
+  2. Copy its SVG content (everything between the backticks)
+  3. Add a new symbol to the <svg style="display:none"> block near the top of <body>
+<a class="skip-link" href="#guide-content">Skip to guidebook content</a>:
+       <symbol id="gb-icon-name" viewBox="0 0 24 24">
+         [pasted SVG content]
+       </symbol>
+     Use a lowercase hyphenated id, e.g. "gb-new-score" for "New Score".
+     Replace \uXXXX escapes with &#xXXXX; entities.
+     Replace var(--menu-drawer-front) with #ddd, var(--bodyShadow) with none.
+     Replace ${scissorsD} and ${circlePath(...)} using the values in icon.js.
+  4. Use the icon anywhere with:
+       <svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-icon-name"/></svg>
+     Add style="margin-left:0.3em" or style="margin-right:0.3em" as needed.
+-->
+<!--
+  Japanese translation of Guidebook.html. The digest below is of that file's
+  prose, with the generated keyword index left out, as it stood when this
+  translation was last brought up to date; build.py --pages reports a mismatch
+  and prints the digest to paste here once the translation has caught up.
+
+  TRANSLATED-FROM: bcc4249bd79e3ae3
+
+  UI names (cell, panel, and button labels) are deliberately left in English,
+  because that is what the app itself shows; the keyword index is left in
+  English for the same reason. Every id and #anchor matches Guidebook.html, so
+  cross-references work in either language.
+-->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PODIUM: Sheet Music Studio ガイドブック</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            /* Latin stays in Georgia as in the English guidebook; the Japanese
+               families are appended so the text does not fall back to whatever
+               the platform happens to pick. Android has no mincho and will use
+               its own serif, which is what the generic keyword is for. */
+            font-family: Georgia, 'Times New Roman', "Hiragino Mincho ProN", "Yu Mincho", "YuMincho", "Noto Serif JP", serif;
+            /* Japanese needs more leading than English at the same size. */
+            line-height: 1.9;
+            color: #333;
+            background: #fff;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        h1 {
+            font-size: 2.5em;
+            margin: 1em 0;
+            color: #1a1a1a;
+            text-align: center;
+        }
+
+        h2 {
+            font-size: 2em;
+            margin: 1.5em 0 0.5em;
+            color: #2c3e50;
+            border-bottom: 2px solid #3498db;
+            padding-bottom: 0.3em;
+        }
+
+        h3 {
+            font-size: 1.5em;
+            margin: 1.2em 0 0.5em;
+            color: #34495e;
+        }
+
+        p {
+            margin: 0.8em 0;
+            text-align: left;
+        }
+
+        ul, ol {
+            margin: 0.8em 0 0.8em 2em;
+        }
+
+        li {
+            margin: 0.3em 0;
+        }
+
+        a {
+            color: #176594;
+            text-decoration: underline;
+        }
+
+        a:hover {
+            text-decoration: underline;
+        }
+
+        nav {
+            background: #f8f9fa;
+            padding: 20px;
+            margin: 2em 0;
+            border-radius: 8px;
+            border: 1px solid #dee2e6;
+        }
+
+        nav h2 {
+            border-bottom: none;
+            margin-top: 0;
+        }
+
+        nav ul {
+            list-style: none;
+            margin: 1em 0 0 0;
+        }
+
+        nav ul ul {
+            margin-left: 2em;
+        }
+
+        nav li {
+            margin: 0.5em 0;
+        }
+
+        section {
+            margin: 3em 0;
+            page-break-inside: avoid;
+        }
+
+        .overture {
+            background: #ecf0f1;
+            padding: 2em;
+            border-radius: 8px;
+            margin: 2em 0;
+        }
+        .overture h2 {
+            margin-top: 0;
+        }
+
+        .overture ul {
+            list-style: none;
+            margin-left: 0;
+        }
+
+        .overture li::before {
+            content: "• ";
+            color: #176594;
+            font-weight: bold;
+        }
+
+        figure {
+            background: transparent;
+            border: none;
+            padding: 0;
+            margin: 1.5em 0;
+            text-align: center;
+            border-radius: 4px;
+        }
+
+        figure figcaption {
+            font-style: italic;
+            color: #666;
+            margin-top: 10px;
+        }
+
+        figure img {
+            max-width: 90%;
+            height: auto;
+        }
+
+        figure img.small {
+            max-width: 40%;
+            height: auto;
+        }
+
+        figure img.cells {
+            width: 521px;
+            max-width: 90%;
+            height: auto;
+        }
+
+        figure video {
+            max-width: 70%;
+            height: auto;
+            border-radius: 4px;
+        }
+
+        .video-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+        }
+
+        .video-container img {
+            max-width: 70%;
+            height: auto;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+
+        .video-container video {
+            position: absolute;
+            display: none;
+            max-width: 70%;
+            max-height: 100%;
+            height: auto;
+            border-radius: 4px;
+        }
+
+
+        .video-container.playing img {
+            visibility: hidden;
+        }
+
+        .video-container.playing video {
+            display: block;
+        }
+
+        .play-overlay {
+            position: absolute;
+            bottom: 10px;
+            right: 10px;
+            padding: 6px 12px;
+            background: rgba(0, 0, 0, 0.7);
+            border-radius: 4px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            transition: all 0.3s ease;
+            pointer-events: auto;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+            font-size: 14px;
+            color: white;
+        }
+
+        .video-container:hover .play-overlay {
+            background: rgba(0, 0, 0, 0.85);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
+        }
+
+        .play-overlay::before {
+            content: '🎬';
+            font-size: 16px;
+        }
+
+
+
+        .video-container.playing .play-overlay {
+            display: none;
+        }
+
+        .close-video {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 32px;
+            height: 32px;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            display: none;
+            z-index: 10;
+            transition: background 0.3s ease;
+        }
+
+        .close-video:hover {
+            background: rgba(0, 0, 0, 0.9);
+        }
+
+        .video-container.playing .close-video {
+            display: block;
+        }
+
+        .layout-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 3px;
+            width: 90%;
+            max-width: 90%;
+        }
+
+        .layout-grid img {
+            width: 100%;
+            max-width: 100%;
+            height: auto;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+
+        .note {
+            background: #fff9e6;
+            border-left: 4px solid #f39c12;
+            padding: 1em;
+            margin: 1em 0;
+        }
+
+        .note::before {
+            content: "Note: ";
+            font-weight: bold;
+            color: #875000;
+        }
+
+        .chapter-link {
+            font-weight: 500;
+            white-space: normal;
+        }
+
+        .header-icon {
+            text-align: center;
+            margin: 1.5em 0;
+        }
+
+        .header-icon img {
+            width: 240px;
+            height: 240px;
+            display: block;
+            margin: 0 auto;
+        }
+
+        .version {
+            font-size: 1.5em;
+            color: #666;
+            font-style: italic;
+            text-align: center;
+            margin: 1.5em 0 2em;
+        }
+
+        .back-to-toc {
+            display: block;
+            text-align: center;
+            margin: 2em 0 1em;
+            font-size: 0.9em;
+            color: #176594;
+        }
+
+
+        a:focus-visible, button:focus-visible, video:focus-visible,
+        .table-scroll:focus-visible {
+            outline: 3px solid #176594;
+            outline-offset: 4px;
+        }
+        .skip-link {
+            position: absolute;
+            top: 0;
+            left: 0;
+            transform: translateY(-110%);
+            padding: 0.75em 1em;
+            background: white;
+            z-index: 100;
+        }
+        .skip-link:focus { transform: none; }
+        .table-scroll { overflow-x: auto; }
+        .video-status { text-align: left; }
+        .play-overlay { border: 2px solid white; min-height: 44px; font-family: inherit; }
+        .video-container img { cursor: default; }
+        p, li, dd, a { overflow-wrap: anywhere; }
+        @media (max-width: 600px) {
+            body { padding: 12px; }
+            nav, .overture { padding: 1em; }
+            nav ul ul { margin-left: 1em; }
+            .video-container img, .video-container video, figure video { max-width: 100%; }
+            figure img.small { max-width: 90%; }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            .play-overlay, .close-video { transition: none; }
+        }
+
+        /* Print styles */
+        @media print {
+            .back-to-toc {
+                display: none;
+            }
+            body {
+                max-width: 100%;
+                padding: 0;
+            }
+
+            section {
+                page-break-before: always;
+            }
+
+            section:first-of-type {
+                page-break-before: auto;
+            }
+
+            nav {
+                page-break-after: always;
+            }
+
+            section {
+                page-break-after: always;
+            }
+
+            a {
+                color: #000;
+            }
+
+            figure {
+                page-break-inside: avoid;
+            }
+
+            .play-overlay,
+            .close-video,
+            .video-container video {
+                display: none !important;
+            }
+
+            .video-container img {
+                display: block !important;
+            }
+        }
+
+        table.compat {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 1.5em 0;
+            font-size: 0.9em;
+        }
+
+        table.compat th, table.compat td {
+            border: 1px solid #ddd;
+            padding: 0.5em 0.75em;
+            text-align: center;
+        }
+
+        table.compat th {
+            background: #f5f5f5;
+            font-weight: 600;
+        }
+
+        table.compat td:first-child {
+            text-align: left;
+            font-weight: 500;
+        }
+
+        table.compat .yes { color: #176c39; }
+        table.compat .no { color: #666; }
+        table.compat .partial { color: #99500d; }
+    </style>
+<style>
+    @font-face {
+        font-family: "Bravura";
+        src: url("https://cdn.jsdelivr.net/gh/steinbergmedia/bravura@master/redist/otf/Bravura.otf");
+    }
+    svg.gb-icon {
+        width: 1.35em;
+        height: 1.35em;
+        vertical-align: middle;
+        overflow: visible;
+    }
+</style>
+</head>
+<body>
+<a class="skip-link" href="#guide-content">本文へスキップ</a>
+<svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+  <symbol id="gb-score" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width="0.8" d="m14.309339,12.611855v0m-2.543782,-3.2802594 3.122609,-0.01247M1.6649238,22.289353 21.865783,22.478636M18.366179,22.221781 18.066257,3.5141062 20.086952,3.4646895 20.102136,22.20106Zm-1.51175,0.05511-0.560058,-17.6242436 1.367543,0.014358 0.16507,17.6551636zm-6.050171,-0.19639 0.300854,-16.1871633 4.813427,-0.031453 0.02069,16.3211033zM6.1506929,22.108151 11.756662,2.5432418 8.2865928,1.7325439 2.6529156,20.947044Z"/>
+  </symbol>
+  <symbol id="gb-layout" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="0.8" d="m12.1,1.82v2.13m0,8.35v3.9M16.8,11A3.88,4.91 86.2 0 1 11.9,14.3 3.88,4.91 86.2 0 1 7.09,11.1M11.4,8.08C10.3,7.89 9.88,6.88 9.99,5.76 10.1,4.65 11.1,3.81 12.2,3.84c1.1,0 2,0.92 2.1,2.04 0,1.11-0.4,2-1.5,2.13M4.97,21 12.2,7.03 19.8,21"/>
+  </symbol>
+  <symbol id="gb-ink" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:0.6;stroke-linecap:butt;stroke-linejoin:miter;" d="m13.5,16.7c1.3,0.4 3.3,0.5 4.4,0m-6.3,1.6c2.1,0.9 6.3,0.9 8.1,0M16.8,17.9C14.8,13.9 14.2,10.2 4.5,2.98 8.43,6.49 12.7,11 16.8,17.9ZM14,13.6C11.8,13.2 10.4,12.2 9.55,11L9.87,10.3 8.48,10.1C5.05,7.72 4.04,3.78 3.08,1.77 5.26,2.68 7.43,3.63 9.43,4.9L9.57,5.78 10.1,5.41c1.7,1.12 3.5,2.34 4.2,4.12l0.1,1.77 0.5,-0.4c0.5,1.2 0.5,2.1-0.2,2.6m-2.3,8c-1.6,-0.2-1.1,-2.3-0.8,-3.2 0.3,-0.9 1.1,-1.5 1.9,-1.6 0,-1 0.2,-1.4 0.4,-1.6 1,-0.1 2.2,-0.2 3.5,0 0.5,0.5 0.4,1 0.5,1.6 0.9,0 1.5,0.7 1.8,1.6 0.3,0.9 0.6,3.1-0.8,3.2-1.4,0.1-4.9,0.2-6.5,0z"/>
+  </symbol>
+  <symbol id="gb-page" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width=".6" d="M5.92,15.9H14.9M5.92,12.3H15M5.92,8.63H15M5.92,5H15M17.3,1.88V18.4L3.83,18.3 3.71,1.89Zm0.2,1.59h2.4V20L6.43,19.9V18.6M19.9,5.18h2.5V21.8L8.76,21.6v-1.5" />
+  </symbol>
+  <symbol id="gb-podium" viewBox="0 0 24 24">
+    <g transform="translate(1) scale(0.9,0.9)">
+      <path fill="#aaa" stroke="currentColor" stroke-width=".6" stroke-linejoin="round" d="M4 23v-3h16v3h1.5h-19ZM7 20v-14h10v14M7 12h-2l-3-10h20l-3 10h-2"/>
+      <text x="10" y="14" font-family="Bravura" font-size="12px">&#xE520;</text>
+    </g>
+  </symbol>
+  <symbol id="gb-more" viewBox="0 0 24 24">
+    <circle fill="currentColor" cx="12" cy="6" r="2"/>
+    <circle fill="currentColor" cx="12" cy="12" r="1.75"/>
+    <circle fill="currentColor" cx="12" cy="18" r="1.5"/>
+  </symbol>
+  <symbol id="gb-open" viewBox="0 0 24 24">
+    <path style="fill:#aaa;fill-rule:nonzero;stroke:currentColor;stroke-width:0.6;" d="M3.48,2.04 9.64,3.99 21.1,3.03 14.8,1.29ZM3.55,2.1 3.84,16.5 9.78,21.2 9.63,3.98ZM9.8,21.3 9.58,21.7v1.1L21.4,20.3v-1L21.1,18.9ZM3.85,16.5 3.56,17v0.8l6,5V21.7L9.77,21.2ZM9.64,3.99 21.1,3.06V18.9L9.89,21.2Z" />
+    <path style="fill:#ddd;fill-rule:nonzero;stroke:currentColor;stroke-width:0.6;" d="m10.7,4.94v7.36l9.9,-1.6-0.1,-6.66zm4.1,9.86c0.1,0.4 0.6,0.7 1.4,0.5 0.7,-0.2 1.1,-0.5 1.1,-0.9 0,-0.3-0.6,-0.6-1.4,-0.4-0.7,0.1-1.1,0.5-1.1,0.8zm-4.1,-1.7v7l9.8,-2v-6.7z" />
+    <path style="fill:#ddd;fill-rule:nonzero;stroke:currentColor;stroke-width:0.6;" d="m16.9,8.13c0.1,0.4 0.6,0.7 1.4,0.5 0.7,-0.2 1.1,-0.5 1.1,-0.9 0,-0.3-0.6,-0.6-1.4,-0.4-0.7,0.1-1.1,0.5-1.1,0.8zM12.8,5.84v7.46l9.9,-1.6V4.68ZM10.7,7.89V11l2.1,1V8.72Zm0.1,0 2,0.78V7.76Z"/>
+  </symbol>
+  <symbol id="gb-save" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:0.5;fill-rule:nonzero" d="m9.8,21.3-0.22,0.4v1L21.4,20.3v-1L21.1,18.9ZM3.55,2.04 9.64,3.99 21.1,3.03 14.8,1.29ZM3.85,16.5 3.56,17v0.8l5.98,4.9v-1L9.75,21.2ZM3.58,2.06 3.84,16.5 9.78,21.2 9.68,3.97ZM9.77,4.02 9.89,21.2 21.1,18.9V3.06Z"/>
+    <path style="fill:#ddd;stroke:currentColor;stroke-width:0.5;fill-rule:nonzero;" d="m17.2,6.37c0,0.4-0.3,0.76-1.1,0.86-0.7,0.13-1.3,-0.16-1.4,-0.53 0,-0.33 0.5,-0.67 1.1,-0.78 0.8,-0.12 1.4,0.12 1.4,0.45zM10.9,5.06 20.3,4.18v6.72l-9.4,1.4zm0,8.34 9.4,-1.5V18l-9.4,1.9zm6.3,0.9c0,0.3-0.3,0.6-1.1,0.8-0.7,0.1-1.5,0-1.5,-0.5 0,-0.3 0.6,-0.8 1.2,-0.9 0.8,-0.1 1.4,0.1 1.4,0.6z"/>
+  </symbol>
+  <symbol id="gb-new-score" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width=".4" stroke-linecap="square" d="m8.45,15.1v0.2m0,0.8v0.2M6.12,15.7c-0.68,0.4-0.68,-1.1 0.48,-0.9 0.83,0 0.96,0.4 1.04,0.9 0.13,1-0.9,2-2.1,2.6v0M6.79,9.67c0.8,-0.2 1.3,-0.8 0.9,-1.6-0.5,-0.8-1.1,-0.7-1.6,-0.3-0.7,0.6-0.1,1.3 0.2,1.3v0M5.69,11c0.3,1.3 1.3,0.8 1.3,0-0.2,-2.03-0.4,-3.93-0.4,-5.93 0,-0.4 0.3,-0.9 0.5,-1 0.9,0.2 0.4,1.9-0.5,2.3-2.3,1-2.2,3.2 0.3,3.3M2.82,18.7c19.98,0 19.98,0 19.98,0v-0.1 0M2.82,17.7c19.98,0 19.98,0 19.98,0v-0.1 0M2.82,16.8c19.98,0 19.98,0 19.98,0v-0.2 0M2.82,15.7c19.98,0 19.98,0 19.98,0v-0.2 0M2.82,14.7c19.98,0 19.98,0 19.98,0v-0.2 0M3.04,9.57c19.76,0 19.76,0 19.76,0v-0.11 0M3.03,8.75c19.77,0 19.77,0 19.77,0v-0.29 0M3.03,7.65c19.77,0 19.77,0 19.77,0v-0.21 0M3.03,6.6c19.77,0 19.77,0 19.77,0v-0.21 0M3.03,5.51c19.77,0 19.77,0 19.77,0v-0.19 0m-19.71,0c0,13.38 0,13.38 0,13.38H2.97v0M2.12,4.72c-1.795,2.14 0.76,3.34-0.86,7.68 1.6,4.5-0.859,6.3 1.03,7.5" />
+  </symbol>
+  <symbol id="gb-close" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width="0.6" d="M15.59,7L12,10.59L8.41,7L7,8.41L10.59,12L7,15.59L8.41,17L12,13.41L15.59,17L17,15.59L13.41,12L17,8.41L15.59,7Z"/>
+  </symbol>
+  <symbol id="gb-print" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width=".5" d="m14.3,12h2.2M18.6,15.6 17.5,13M6.18,12H7.97M3.37,15.6 5.17,13M11.1,1.96h1M10.7,3.13 11.4,2.57 11.1,2M11.8,3.12 12.4,2.53 12.1,1.96M11.1,6.91 10.6,6.28 11.2,5.88 10.6,5.19 11.1,4.75 10.7,4.18M12.4,6.86 12,6.23 12.6,5.82 12,5.13 12.4,4.69 12.1,4.12m0.8,2.85H9.85V8.83H12.9V8.28L20.8,8.15V7.69L12.9,7.58ZM7.02,8.82H15.7V10.3H7.01ZM8.19,11.6 6.63,14.4H15.3L14.1,11.6ZM3.56,22.9V15.6H18.4V23H16.5V18.6H15.6V17H6.03v1.6H5.14v4.3zM16.6,8.23V13h0.9L17.6,8.24ZM5.14,13V2.1H6.16V3.15H16.6v-1.1h1.1l-0.1,5.57h-1V4.09H6.16V13Z" />
+  </symbol>
+  <symbol id="gb-details" viewBox="0 0 24 24">
+    <defs>
+      <mask id="gb-details-mask">
+        <rect x="0" y="0" height="24" width="24" fill="white"/>
+        <path fill="black" d="M5 15A8 8 0 0 1 19 15Z"/>
+      </mask>
+    </defs>
+    <path mask="url(#gb-details-mask)" fill="#aaa" stroke="currentColor" stroke-width=".6"
+      d="M1 18A8 8 0 0 1 23 18ZM5 15A8 8 0 0 1 19 15ZM3 18v-1M6 18v-1.5M9 18v-1M12 18v-2M15 18v-1M18 18v-1.5M21 18v-1M4 15l-1.5-.25M7 11l-1-1M12 10v-2M17 11l1-1M20 15l1.5-.25"/>
+  </symbol>
+  <symbol id="gb-book" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:0.6;" d="M11.9,21.3C15.1,20.4 18.3,19.5 23,20.6V6C22.4,5.55 19.8,4.56 19,4.31V15.1c-2.4,0.3-4.8,3.4-7.1,6.2z"/>
+    <path style="fill:none;stroke:currentColor;stroke-width:0.6;" d="m3.46,11.2c1.38,-0.6 4.12,-1.8 5.95,0m-6.3,6.9C4.19,17.9 6.76,16.5 9.49,18M3.31,14.7c1.43,-0.6 3.56,-1.8 5.95,0M3.35,8.38c1.44,-0.87 3.98,-1.41 6.32,0M12,6.14C6.99,3.73 3.82,4.29 1.12,6.13L1.02,21.4c3.46,-1.5 6.99,-2.1 10.78,0z" />
+    <path style="fill:none;stroke:currentColor;stroke-width:0.6;" d="m13.6,12.3c1,-1.4 2.1,-2.82 3.2,-3.4m-3,6.8c0.3,-0.9 1.4,-2.1 3.1,-3.5M13.7,8.93c1.2,-1.9 2.2,-2.45 3.5,-3.36M11.9,6.14C14,4.03 16.4,2.47 19,1.04V15c-2.8,1.1-5,3.8-7.2,6.4z" />
+  </symbol>
+  <symbol id="gb-horizontal-scroll" viewBox="0 0 24 24">
+    <path fill="#888" stroke="currentColor" stroke-width="0.6" d="M16.7,9.6H7.48m9.22,5.2H7.48m9.22,2.5H7.37M16.7,12.2H7.48M16.7,6.98H7.37M1.44,20.2a0.545,0.519 0 0 0 0.53,0.5 0.545,0.519 0 0 0 0.52,-0.5H1.97Zm20.46,0.1a0.545,0.519 0 0 0 0.6,0.5 0.545,0.519 0 0 0 0.5,-0.5H22.5ZM1.55,3.92A0.545,0.519 0 0 1 2.07,3.4 0.545,0.519 0 0 1 2.6,3.92H2.07ZM21.8,4.03a0.545,0.519 0 0 1 0.5,-0.52 0.545,0.519 0 0 1 0.6,0.52H22.3ZM21.4,20C15.1,19.3 9.01,19.4 3.12,20M21.4,4.35C15,5.16 9.01,4.75 3.02,4.35M23.4,4V20.3H21.5V4.06ZM3.02,3.92V20.2H1.13V3.98Z" />
+  </symbol>
+  <symbol id="gb-vertical-scroll" viewBox="0 0 24 24">
+    <path fill="#888" stroke="currentColor" stroke-width="0.6" d="M6.63,14.7H17.5M6.63,9.85H17.5M6.63,7.4H17.6M6.63,12.3H17.5M6.63,17.2H17.6m4,5.2a0.607,0.519 0 0 0 0.6,-0.5 0.607,0.519 0 0 0-0.6,-0.5v0.5zM21.7,2.95A0.607,0.519 0 0 0 22.3,2.43 0.607,0.519 0 0 0 21.7,1.91V2.43ZM2.52,22.3A0.607,0.519 0 0 1 1.9,21.8 0.607,0.519 0 0 1 2.52,21.3v0.5zM2.64,3.05A0.607,0.519 0 0 1 2.04,2.53 0.607,0.519 0 0 1 2.64,2.01V2.53ZM21.4,3.38c-0.9,6.05-0.8,11.82 0,17.42M3.02,3.42c0.94,6.09 0.46,11.78 0,17.48M2.61,1.55H21.7V3.33H2.67ZM2.52,20.9H21.6v1.8H2.58Z"/>
+  </symbol>
+  <symbol id="gb-table" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="0.5" d="M22.8,3.78C22.6,4.12 22.3,4.46 22.4,4.8M17,5.25V6.02M2.4,4.17C2.49,3.91 2.22,3.65 2.04,3.39L7.79,2.03 22.9,3.81 17,5.12 2.09,3.45v0M20.5,7.44c-0.4,1.58 0.6,7.66 0.4,11.26 0.2,0.5-0.4,1.2 0.4,1.5 0.5,0.3 0.5,0.7 1.2,-0.4 0.3,-0.4-0.2,-0.7-0.5,-1.5-0.5,-4 1.2,-8 0.4,-11.4M17,6.21 2.41,4.19V6.52M17,8.51 22.4,6.84V4.82L17,6.16ZM14.9,8.26c0.7,0.47 1,1.15 1.1,2.44 0.8,3.6 0.6,7.1 0.7,10.7-0.1,0.7 0.3,0.7 0.7,0.8 0.4,-0.1 0.4,-0.3 0.5,-0.5C17.8,19 17.1,18.3 18.4,10.6 18.5,10.1 18.6,8.88 19,7.91M9.01,7.63C8.45,10 8.51,13.1 8.6,15.8c0,1.1-0.1,1.1-0.76,1C7.46,16.8 7.6,16.1 7.6,15.6 7.39,12.8 7.29,8.91 6.11,6.92M5.09,6.81C4.35,8.45 4.4,13.9 4.39,17.4c0,1.2 0.89,1.2-1.1,1.3-0.37,0-0.55,-0.9 0.18,-1.5C3.8,12.1 1.75,8.65 2.53,6.48l14.37,2.1"/>
+  </symbol>
+  <symbol id="gb-pen" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width="0.5" d="m14.9,3.18 1.4,-1.25 5.4,5.26-1.3,1.29zM2.21,20.5C4.18,18.1 5.33,14.7 5.99,10.7 9.09,8.87 12.2,7.09 14.8,4.6L19,8.77c-2.3,2.33-4.2,5.63-6.2,8.93-5.34,0.5-7.49,2.1-9.78,3.6l7.08,-7.1c1,0.1 1.5,-0.9 0.8,-1.6-0.7,-0.6-1.75,0-1.49,0.9z" />
+  </symbol>
+  <symbol id="gb-pencil" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width="0.5" d="M2.36,21.4 2.22,21.8 2.61,21.6M18.7,3.37 20.6,5.39m-2.5,-1.5 2,1.98M17.7,4.33 19.6,6.32M17.2,4.8 19.1,6.77m-2.7,-1.17 2,1.99M3.41,18.6h1.07v0.8h0.85v1.1M2.08,21.9 3.42,18.5 19.7,2.26c1.3,-0.1 2,0.41 2,1.99L5.4,20.5Z" />
+  </symbol>
+  <symbol id="gb-rastrum" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width=".6" d="M15.6,2.74 17,1.48 22.4,6.75 21.1,8.04ZM0.472,17.8 6.59,10C9.69,8.18 12.9,6.65 15.5,4.16l4.2,4.17C17.4,10.7 15.5,14 13.5,17.3l-7.55,6.2 6.15,-7.6-7.56,6C4.31,22.1 11.1,14 10.6,14.4l-7.49,6.1 6.21,-7.6-7.65,6.2c-0.59,0.5 6.51,-8.2 6.06,-7.8z"/>
+  </symbol>
+  <symbol id="gb-text" viewBox="0 0 24 24">
+    <text x="0" y="16" font-size="12px" fill="currentColor">Abc</text>
+  </symbol>
+  <symbol id="gb-symbols" viewBox="0 0 24 24">
+    <text y="15" x="7" font-size="13px" font-family="Bravura" fill="currentColor">&#xE050;</text>
+  </symbol>
+  <symbol id="gb-cut" viewBox="0 0 24 24">
+    <path fill="currentColor" transform="translate(3,17) scale(0.02,-0.02) translate(-35,-81)" d="M244 518Q244 499 236.5 479.5Q229 460 229 457Q229 439 267 439Q288 439 335.5 424.5Q383 410 421 393L733 511Q793 533 834 533Q861 533 880.0 524.5Q899 516 926 492L549 348L927 206Q888 166 832 166Q787 166 730 187L421 301Q321 262 251 251Q240 249 236.5 248.0Q233 247 231.5 244.5Q230 242 230.0 236.0Q230 230 238.0 212.5Q246 195 246 175Q246 135 216.0 108.0Q186 81 141.0 81.0Q96 81 67.0 107.5Q38 134 38 175Q38 222 73.5 251.5Q109 281 165 281L233 280Q277 280 310.0 298.5Q343 317 354 348Q325 413 230 413L160 411Q105 411 70.0 439.5Q35 468 35.0 512.0Q35 556 64.0 583.5Q93 611 139 611Q183 611 213.5 584.0Q244 557 244 518ZM146 443Q174 443 192.5 462.0Q211 481 211.0 510.0Q211 539 190.0 559.0Q169 579 138.0 579.0Q107 579 87.5 561.0Q68 543 68.0 514.0Q68 485 91.0 464.0Q114 443 146 443ZM148 249Q117 249 94.0 226.5Q71 204 71 175Q71 148 90.0 130.5Q109 113 138 113Q172 113 192.5 132.5Q213 152 213 185Q213 213 194.5 231.0Q176 249 148 249Z"/>
+  </symbol>
+  <symbol id="gb-copy" viewBox="0 0 24 24">
+    <text y="12" x="4" font-size="11px" font-family="Bravura" fill="#888">&#xE050;</text>
+    <text y="16" x="8" font-size="11px" font-family="Bravura" fill="currentColor">&#xE050;</text>
+  </symbol>
+  <symbol id="gb-paste" viewBox="0 0 24 24">
+    <g style="transform:translate(-3px,-3px) scale(1.2,1.2);">
+      <path style="fill:#aaa;stroke:currentColor;stroke-width:.6;" d="m10.5,10.2h3.2v4.9H10.5ZM11,8.62C10.5,8.75 9.93,8.6 9.56,9.22V16.4H14.6V9.24C14.3,8.66 13.7,8.69 13.1,8.61ZM11,7.4h2.1V8.63H11Zm1.1,-2.22c0.3,-0.1 0.7,2.11 0.6,2.22H11.5C11.4,7.24 11.8,5.07 12.1,5.18Z" />
+    </g>
+  </symbol>
+  <symbol id="gb-undo" viewBox="0 0 24 24">
+    <text font-size="20px" y="16" x="6" fill="currentColor" font-family="Bravura">&#xEDF0;</text>
+  </symbol>
+  <symbol id="gb-grid" viewBox="0 0 24 24">
+    <text font-size="25px" y="12" x="-12" font-family="Bravura" fill="currentColor">&#xEE37;</text>
+  </symbol>
+  <symbol id="gb-edit" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width="0.6" d="M12 3 m-2 0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M4 10 m-2 0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M20 10 m-2 0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M4 20 m-2 0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M20 20 m-2 0 a2,2 0 1,0 4,0 a2,2 0 1,0 -4,0 M4,10h16v10h-16zM12,10v-6.5" />
+  </symbol>
+  <symbol id="gb-numbers" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M3 2h17v20.5h-17Z"/>
+    <path style="fill:none;stroke:currentColor;stroke-width:0.3" d="M5.5 5h12M5.5 8h12M5.5 11h12M5.5 14h12M5.5 17h12M5.5 20h12"/>
+    <rect x="7" y="6" width="9" height="13.5" fill="#aaa" stroke="none"/>
+    <text style="fill:currentColor;font-family:Bravura;font-size:18px;" x="9" y="12.5">&#xE262;</text>
+  </symbol>
+  <symbol id="gb-new-page" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M3 2h17v20.5h-17Z"/>
+    <path style="fill:none;stroke:currentColor;stroke-width:0.3" d="M5.5 5h12M5.5 8h12M5.5 11h12M5.5 14h12M5.5 17h12M5.5 20h12"/>
+    <rect x="7" y="9" width="9" height="6.5" fill="#aaa" stroke="none"/>
+    <text x="7.5" y="15.5" style="font-size:11">&#x2295;</text>
+  </symbol>
+  <symbol id="gb-cut-page" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M3 2h17v20.5h-17Z"/>
+    <path style="fill:none;stroke:currentColor;stroke-width:0.3" d="M5.5 5h12M5.5 8h12M5.5 17h12M5.5 20h12"/>
+    <path fill="currentColor" transform="translate(5.5,16) scale(0.013,-0.013) translate(-35,-81)" d="M244 518Q244 499 236.5 479.5Q229 460 229 457Q229 439 267 439Q288 439 335.5 424.5Q383 410 421 393L733 511Q793 533 834 533Q861 533 880.0 524.5Q899 516 926 492L549 348L927 206Q888 166 832 166Q787 166 730 187L421 301Q321 262 251 251Q240 249 236.5 248.0Q233 247 231.5 244.5Q230 242 230.0 236.0Q230 230 238.0 212.5Q246 195 246 175Q246 135 216.0 108.0Q186 81 141.0 81.0Q96 81 67.0 107.5Q38 134 38 175Q38 222 73.5 251.5Q109 281 165 281L233 280Q277 280 310.0 298.5Q343 317 354 348Q325 413 230 413L160 411Q105 411 70.0 439.5Q35 468 35.0 512.0Q35 556 64.0 583.5Q93 611 139 611Q183 611 213.5 584.0Q244 557 244 518ZM146 443Q174 443 192.5 462.0Q211 481 211.0 510.0Q211 539 190.0 559.0Q169 579 138.0 579.0Q107 579 87.5 561.0Q68 543 68.0 514.0Q68 485 91.0 464.0Q114 443 146 443ZM148 249Q117 249 94.0 226.5Q71 204 71 175Q71 148 90.0 130.5Q109 113 138 113Q172 113 192.5 132.5Q213 152 213 185Q213 213 194.5 231.0Q176 249 148 249Z"/>
+  </symbol>
+  <symbol id="gb-copy-page" viewBox="0 0 24 24">
+    <g style="transform:scale(.85)">
+      <path style="transform:translate(-2.5px,-2.5px);fill:#aaa;stroke:currentColor;stroke-width:.3" d="M3 2h17v20.5h-17Z"/>
+      <path style="transform:translate(-2.5px,-2.5px);fill:#aaa;stroke:currentColor;stroke-width:0.1" d="M5.5 5h12M5.5 8h12M5.5 11h12M5.5 14h12M5.5 17h12M5.5 20h12"/>
+      <path style="transform:translate(5px,3px);fill:#ccc;stroke:currentColor;stroke-width:.6" d="M3 2h17v20.5h-17Z"/>
+      <path style="transform:translate(5px,3px);fill:#ccc;stroke:currentColor;stroke-width:0.3" d="M5.5 5h12M5.5 8h12M5.5 11h12M5.5 14h12M5.5 17h12M5.5 20h12"/>
+    </g>
+  </symbol>
+  <symbol id="gb-paste-page" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M3 2h17v20.5h-17Z"/>
+    <path style="fill:none;stroke:currentColor;stroke-width:0.3" d="M5.5 5h12M5.5 8h12M5.5 11h12M5.5 14h12M5.5 17h12M5.5 20h12"/>
+    <rect x="7" y="7" width="9" height="12.5" fill="#aaa" stroke="none"/>
+    <g style="transform:translate(-2px,.5px) scale(1.1,1.1);">
+      <path style="fill:#bbb;stroke:currentColor;stroke-width:.6;" d="m10.5,10.2h3.2v4.9H10.5ZM11,8.62C10.5,8.75 9.93,8.6 9.56,9.22V16.4H14.6V9.24C14.3,8.66 13.7,8.69 13.1,8.61ZM11,7.4h2.1V8.63H11Zm1.1,-2.22c0.3,-0.1 0.7,2.11 0.6,2.22H11.5C11.4,7.24 11.8,5.07 12.1,5.18Z" />
+    </g>
+  </symbol>
+  <symbol id="gb-export-page" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M3 5h17v17.5h-17Z"/>
+    <path style="fill:#ccc;stroke:currentColor;stroke-width:0.3" d="M5.5 8h12M5.5 11h12M5.5 14h12M5.5 17h12M5.5 20h12"/>
+    <rect x="9.75" y="5.5" width="3.5" height="15" fill="#aaa" stroke="none"/>
+    <text x="10.5" y="21.5" style="fill:currentColor;font-family:Bravura;font-size:12">&#xE634;</text>
+  </symbol>
+  <symbol id="gb-import-page" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M3 5h17v17.5h-17Z"/>
+    <path style="fill:#ccc;stroke:currentColor;stroke-width:0.3" d="M5.5 8h12M5.5 11h12M5.5 14h12M5.5 17h12M5.5 20h12"/>
+    <rect x="6.75" y="5.5" width="3.5" height="15" fill="#aaa" stroke="none"/>
+    <rect x="13" y="5.5" width="3.5" height="15" fill="#aaa" stroke="none"/>
+    <text x="7.5" y="21" style="fill:currentColor;font-family:Bravura;font-size:12">&#xE635;</text>
+    <text x="14" y="21" style="fill:currentColor;font-family:Bravura;font-size:12">&#xE635;</text>
+  </symbol>
+  <symbol id="gb-flatten" viewBox="0 0 24 24">
+    <text y="9" x="5" font-size="14px" font-family="Bravura" fill="currentColor">&#xe1d4;</text>
+    <g transform="translate(0 2)">
+    <path stroke="currentColor" fill="#9998" stroke-width=".6" d="M4 12L0 20L24 20L20 12Z"/>
+    <path fill="none" stroke="currentColor" stroke-width="0.3" d="M4 12.5L20 12.5M3.5 14L20.5 14M3 15.5L21 15.5M2.5 17L21.5 17M2 18.5L22 18.5M1.5 20L22.5 20"/>
+    </g>
+    <text transform="translate(28 18) rotate(130) skewX(40)" y="6px" x="0" font-size="14px" font-family="Bravura" fill="currentColor">&#xe1d4;</text>
+  </symbol>
+  <symbol id="gb-merge" viewBox="0 0 24 24">
+    <path style="fill:#aaa;stroke:currentColor;stroke-width:.6" d="M3 5h17v17.5h-17Z"/>
+    <path style="fill:#ccc;stroke:currentColor;stroke-width:0.3" d="M5.5 8h12M5.5 14h12M5.5 20h12"/>
+    <g transform="rotate(-90,12,12)">
+      <text x="5.5" y="19" style="fill:currentColor;font-family:Bravura;font-size:12">&#xE635;</text>
+      <text x="12" y="19" style="fill:currentColor;font-family:Bravura;font-size:12">&#xE635;</text>
+    </g>
+  </symbol>
+  <symbol id="gb-magnify" viewBox="0 0 24 24">
+    <defs>
+      <mask id="gb-magnify-mask">
+        <rect x="0" y="0" width="24" height="24" fill="white"/>
+        <circle cx="9" cy="9" r="5.2" fill="black"/>
+      </mask>
+    </defs>
+    <path stroke="currentColor" stroke-width=".3" fill="#aaa" d="M12.1 14.4L20 20L21 18.9L14.4 12.2Z"/>
+    <circle mask="url(#gb-magnify-mask)" cx="9" cy="9" r="6.1" fill="#aaa" stroke="currentColor" stroke-width=".3"/>
+    <circle mask="url(#gb-magnify-mask)" cx="9" cy="9" r="5.3" fill="#aaa" stroke="currentColor" stroke-width=".3"/>
+  </symbol>
+  <symbol id="gb-about" viewBox="0 0 24 24">
+    <text font-size="42px" y="20" x="7" font-family="Bravura" fill="currentColor">&#xED19;</text>
+  </symbol>
+  <symbol id="gb-storage" viewBox="0 0 24 24">
+    <path d="M2 5h20v14h-8v-1.5h-1.5v1.5H2v-5a2 2 0 0 0 0-4V5z" fill="none" stroke="currentColor" stroke-width="0.8"/>
+    <rect x="6" y="7.5" width="5" height="7" rx="0.5" fill="#aaa" stroke="currentColor" stroke-width="0.8"/>
+    <rect x="15" y="7.5" width="5" height="7" rx="0.5" fill="#aaa" stroke="currentColor" stroke-width="0.8"/>
+    <path d="M6.5 7.5v-1.5M8.5 7.5v-1.5M10.5 7.5v-1.5M6.5 14.5v1.5M8.5 14.5v1.5M10.5 14.5v1.5" stroke="currentColor" stroke-width="0.6"/>
+    <path d="M15.5 7.5v-1.5M17.5 7.5v-1.5M19.5 7.5v-1.5M15.5 14.5v1.5M17.5 14.5v1.5M19.5 14.5v1.5" stroke="currentColor" stroke-width="0.6"/>
+    <path d="M2 17h10.5M14 17h8" stroke="currentColor" stroke-width="0.5"/>
+    <path d="M4 19v-2M6 19v-2M8 19v-2M10 19v-2M16 19v-2M18 19v-2M20 19v-2" stroke="currentColor" stroke-width="0.6"/>
+  </symbol>
+  <symbol id="gb-guide" viewBox="0 0 24 24">
+    <g transform="translate(24,0) scale(-1,1) rotate(-20,12,12)">
+      <text font-size="22px" x="2" y="18" font-family="Bravura" fill="currentColor" stroke="currentColor" stroke-width="0.6" style="paint-order:stroke;">&#xEC46;</text>
+    </g>
+  </symbol>
+  <symbol id="gb-light" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M16,6A7,7 0 0 0 9,13A7,7 0 0 0 16,20A7,7 0 0 0 21,18.5A8,8 0 0 1 13,12A8,8 0 0 1 16,6Z"/>
+    <circle fill="currentColor" cx="7" cy="8" r="0.8"/>
+  </symbol>
+  <symbol id="gb-dark" viewBox="0 0 24 24">
+    <circle fill="currentColor" cx="12" cy="12" r="4"/>
+    <path fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" d="M12,2.5v2M12,19.5v2M21.5,12h-2M4.5,12h-2M18.4,5.6l-1.4,1.4M7,17l-1.4,1.4M18.4,18.4l-1.4-1.4M7,7L5.6,5.6"/>
+  </symbol>
+  <symbol id="gb-glass" viewBox="0 0 24 24">
+    <rect fill="#aaa" stroke="currentColor" x="3" y="2" width="18" height="2"/>
+    <path fill-rule="evenodd" fill="#aaa" stroke="currentColor" d="M4 4h16v16h-16z M6 6h12v12h-12z"/>
+    <path fill="none" stroke="currentColor" d="M6 12h12M12 6v12"/>
+    <rect fill="#aaa" stroke="currentColor" x="1" y="20" width="22" height="2"/>
+  </symbol>
+  <symbol id="gb-curtain" viewBox="0 0 24 24">
+    <g transform="translate(2.4,1.8) scale(0.8)">
+      <line x1="1" y1="3.5" x2="23" y2="3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>
+      <path fill="#aaa" stroke="currentColor" stroke-width="0.7" stroke-linejoin="round" d="M2,4 L9,4 C8,10 7,16 6,22 L2,22 Z"/>
+      <path fill="none" stroke="currentColor" stroke-width="0.4" stroke-linecap="round" d="M7,4 C6.5,9 6,15 5.5,20"/>
+      <path fill="#aaa" stroke="currentColor" stroke-width="0.7" stroke-linejoin="round" d="M22,4 L15,4 C16,10 17,16 18,22 L22,22 Z"/>
+      <path fill="none" stroke="currentColor" stroke-width="0.4" stroke-linecap="round" d="M17,4 C17.5,9 18,15 18.5,20"/>
+    </g>
+  </symbol>
+  <symbol id="gb-wakelock" viewBox="0 0 24 24">
+    <path d="M11 1 C9.5 3 8.5 5 9.5 6.5 C10 7.5 10.5 8 11 8 C11.5 8 12 7.5 12.5 6.5 C13.5 5 12.5 3 11 1Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="#fff"/>
+    <line x1="11" y1="8" x2="11" y2="9.5" stroke="currentColor" stroke-width="1" stroke-linecap="round"/>
+    <rect x="7.5" y="9.5" width="7" height="9" rx="0.8" stroke="currentColor" stroke-width="1.2" fill="none"/>
+    <path d="M4 18.5 Q4 21 11 21 Q18 21 18 18.5 L16 18.5 L6 18.5 Z" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" fill="none"/>
+    <path d="M18 20 Q21 20 21 17.5 Q21 15.5 19 15.5 Q17.5 15.5 17.5 17" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  </symbol>
+  <symbol id="gb-full-screen" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width="0.9" d="m4.99,18.9 3.1,-3.3m-3.1,0v3.3h3.1m10.21,0-3.1,-3.3m3.1,0v3.3H15.2M5.06,5.18 8.16,8.42M4.99,8.3V5.06h3.1m10.21,0-3.1,3.24m3.1,0V5.06H15.2M8.99,9.01a0.4,0.4 0 0 0-0.4,0.4v5.39a0.4,0.4 0 0 0 0.4,0.4h5.41a0.4,0.4 0 0 0 0.4,-0.4V9.41a0.4,0.4 0 0 0-0.4,-0.4z" />
+  </symbol>
+  <symbol id="gb-normal-screen" viewBox="0 0 24 24">
+    <path fill="#aaa" stroke="currentColor" stroke-width="0.9" d="M8.04,15.7 4.94,19m3.1,0v-3.3h-3.1m10.36,0 3.1,3.3m-3.1,0v-3.3h3.1M8.03,8.24 4.93,5M8.1,5.12V8.36H5M15.3,8.24 18.4,5m-3.1,0v3.24h3.1M8.99,9.01a0.4,0.4 0 0 0-0.4,0.4v5.39a0.4,0.4 0 0 0 0.4,0.4h5.41a0.4,0.4 0 0 0 0.4,-0.4V9.41a0.4,0.4 0 0 0-0.4,-0.4z" />
+  </symbol>
+  <symbol id="gb-metronome" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="1.0" d="M11.6,15 6.85,6.9M11.1,3.92h2.8v0 0M12.6,14 12.5,4.64v0m3.4,16.16v0.8H17V20.8ZM8,20.9h1.13v0.7H7.96Zm0,-5.1h2.47c1.6,-1.5 3,-1.3 4.3,0h2m-9.99,5 4.19,-17.09 1.6,-0.98 1.4,1 4.1,17.07z" />
+  </symbol>
+  <symbol id="gb-stopwatch" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="0.75" stroke-linecap="round" stroke-linejoin="round" d="m11.9,13 3.2,1.7M8.35,7.28 7.74,5.99M6.04,9.72 4.8,8.96M5.82,16.3 4.77,16.9M8.3,18.7 7.7,20m7.2,-1.1 0.6,1m1.9,-3.6 1.2,0.7M17.4,9.8 18.7,9.05M15.1,7.33 15.8,6.08m-4,-2.16V4.46M3.7,12.9H5.13M11.8,4.93V6.36M11.6,19.7v1.4M18.4,13h1.4m-8,-7.23V13L6.42,17.9M9.49,3.85V2.13H13.9V3.9ZM17.3,6.43 18,5.6 19.2,6.63 18.3,7.61M5.1,7.6 4.15,6.68 5.36,5.51 6.25,6.4M20.3,13A8.57,8.57 0 0 1 11.7,21.6 8.57,8.57 0 0 1 3.13,13 8.57,8.57 0 0 1 11.7,4.43 8.57,8.57 0 0 1 20.3,13Z" />
+  </symbol>
+  <symbol id="gb-clock" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="1.2" d="M3.42,12.9H5.13M11.8,4.68V6.36M11.6,19.7v1.7M18.4,13H20M8.11,8.11 11.8,13.2 11.2,8.24M20.3,13A8.57,8.57 0 0 1 11.7,21.6 8.57,8.57 0 0 1 3.13,13 8.57,8.57 0 0 1 11.7,4.43 8.57,8.57 0 0 1 20.3,13Z" />
+  </symbol>
+  <symbol id="gb-piano" viewBox="0 0 24 24">
+    <path fill="currentColor" d="M9.74,8.98H13.5L13.3,10.9H9.92ZM4.05,13.3V12.7H19.1v0.6zM3.88,10.6 14.2,4.17 18.5,10.4 15.3,10.5V8.31H7.99v2.19zm-0.6,4.3 0.29,7.4h1.16l0.33,-7.4 3.36,0.2 0.51,6h0.74l0.43,-5.9 8,-0.2 0.5,7.1 0.9,-0.1 0.4,-7.1h0.5V10.4H18.9L14.6,4.05 17.7,1.98 17.5,1.49 2.84,9.96 2.8,14.9Z" />
+  </symbol>
+  <symbol id="gb-review" viewBox="0 0 24 24">
+    <path fill="none" stroke="currentColor" stroke-width="0.8" d="m14.5,6.73c-1,-1.34-1.9,-0.78-2.5,0m-7.97,0.5c0,2.48 1.73,4.47 3.99,4.47 2.18,0 4.08,-1.95 4.08,-4.47 0,-2.51-1.9,-4.52-4.08,-4.47-2.26,0-3.99,2-3.99,4.47zM14.5,7.03c0,2.52 2,4.57 4.2,4.47 2.2,0 4,-2.01 4,-4.47 0,-2.47-1.8,-4.48-4,-4.48-2.2,-0.11-4.2,1.95-4.2,4.48zm-10.57,0H1.4L10,22.7c0.5,0 0.8,-0.2 0.9,-0.6L1.4,7.05" />
+  </symbol>
+  <symbol id="gb-volume" viewBox="0 0 24 24">
+    <text y="13" x="6" font-size="20px" font-family="Bravura" fill="currentColor">&#xE534;</text>
+  </symbol>
+  <symbol id="gb-keyboard" viewBox="0 0 24 24">
+    <g style="fill:none;stroke:currentColor;stroke-width:0.6">
+      <path d="M5 1h14v6H5z"/>
+      <path d="M2.5 7h19"/>
+      <rect x=".25" y="6" width="2" height="4" fill="black"/>
+      <rect x="21.5" y="6" width="2" height="4" fill="black"/>
+      <path d="M11 11.5l.5-3 M13 11.5l-.5 -3"/>
+      <path d="M0 5 Q 2 2 3 4 L3.5 6.5"/>
+      <path fill="#aaa" d="M1 11v8 a3 3 0 0 0 3 3h16 a3 3 0 0 0 3-3v-8 c0-2-1-3-3-3 h-2.5 v1 a3 1.5 0 0 1-11 0 V8 H4 c-2 0-3 1-3 3z"/>
+      <g fill="black">
+        <circle cx="3" cy="13.5" r="0.8"/><circle cx="6.6" cy="13.5" r="0.8"/><circle cx="10.2" cy="13.5" r="0.8"/>
+        <circle cx="13.8" cy="13.5" r="0.8"/><circle cx="17.4" cy="13.5" r="0.8"/><circle cx="21" cy="13.5" r="0.8"/>
+        <circle cx="4.8" cy="16.5" r="0.8"/><circle cx="8.4" cy="16.5" r="0.8"/><circle cx="12" cy="16.5" r="0.8"/>
+        <circle cx="15.6" cy="16.5" r="0.8"/><circle cx="19.2" cy="16.5" r="0.8"/>
+      </g>
+      <rect x="8" y="19" width="8" height="1.2" rx="0.5"/>
+    </g>
+  </symbol>
+</svg>
+
+<script>
+async function playVideo(container) {
+    if (container.classList.contains('playing')) return;
+
+    container.classList.add('playing');
+    const video = container.querySelector('video');
+    video.focus();
+    const status = container.parentElement.querySelector('.video-status');
+    status.textContent = '';
+    try { await video.play(); }
+    catch {
+        status.textContent = '動画を再生できませんでした。動画の操作部からもう一度試すか、前後の本文をお読みください。';
+    }
+}
+
+function closeVideo(event, container) {
+    event.stopPropagation();
+    container.classList.remove('playing');
+    const video = container.querySelector('video');
+    video.pause();
+    video.currentTime = 0;
+    container.querySelector('.play-overlay').focus();
+}
+</script>
+
+<h1>PODIUM: Sheet Music Studio</h1>
+
+<div class="header-icon">
+    <img src="assets/podium-icon.jpg" alt="Podium icon" loading="lazy">
+</div>
+
+<div style="font-size:2em;font-weight:600;text-align:center;margin:.25em 0;">ガイドブック</div>
+<div class="version">Version 2.3.x</div>
+
+<p style="text-align: center;">Podium と並べて読むには<a href="Guidebook.ja.html" target="_blank">別ウィンドウで開いて</a>ください。 | <a href="javascript:window.print()">印刷する</a></p>
+
+<nav id="toc" aria-labelledby="toc-heading">
+    <h2 id="toc-heading">目次</h2>
+    <ul>
+        <li><a href="#overture">Overture（序章）</a></li>
+        <li><a href="#chapter-1">第1章: クイックスタート</a> — <span style="color:#666">まずは基本だけ</span></li>
+        <li><a href="#chapter-2">第2章: Podium を動かす</a> — <span style="color:#666">URL から開く、またはインストールする</span>
+            <ul>
+                <li><a href="#chapter-2-extension">2.1 ブラウザ拡張</a> — <span style="color:#666">デスクトップにブラウザ拡張としてインストールする</span></li>
+                <li><a href="#chapter-2-pwa">2.2 プログレッシブ ウェブ アプリ (PWA)</a> — <span style="color:#666">どの端末にも単独のアプリとしてインストールする</span></li>
+                <li><a href="#chapter-2-compat">2.3 ブラウザ対応状況</a> — <span style="color:#666">対応するブラウザとプラットフォーム</span></li>
+                <li><a href="#chapter-2-foot-pedal">2.4 フットペダル</a> — <span style="color:#666">Bluetooth フットペダルでページをめくる</span></li>
+                <li><a href="#chapter-2-language">2.5 Podium を自分の言語で使う</a> — <span style="color:#666">ブラウザの翻訳機能で画面を訳す</span></li>
+            </ul>
+        </li>
+        <li><a href="#chapter-3">第3章: 画面操作の基本</a> — <span style="color:#666">メニュー、パネル、ジェスチャー、背景</span></li>
+        <li><a href="#chapter-4">第4章: Score リング</a> — <span style="color:#666">PDF ファイルとして保存された譜面を扱う</span>
+            <ul>
+                <li><a href="#chapter-4-open-save">4.1 Open, Save</a> — <span style="color:#666">PDF の譜面ファイルを開く／保存する</span></li>
+                <li><a href="#chapter-4-new">4.2 New</a> — <span style="color:#666">白紙の譜面を新規作成する</span></li>
+                <li><a href="#chapter-4-close">4.3 Close</a> — <span style="color:#666">開いている譜面を閉じる</span></li>
+                <li><a href="#chapter-4-print">4.4 Print</a> — <span style="color:#666">注釈あり／なしで印刷する</span></li>
+                <li><a href="#chapter-4-details">4.5 Details</a> — <span style="color:#666">譜面の情報とメタデータ</span></li>
+            </ul>
+        </li>
+        <li><a href="#chapter-5">第5章: Layout リング</a> — <span style="color:#666">譜面の表示方法を決める</span>
+            <ul>
+                <li><a href="#chapter-5-page-turning">ページめくり</a> — <span style="color:#666">タップ、ドラッグ、フリングの操作</span></li>
+                <li><a href="#chapter-5-bookmarks">ブックマーク</a> — <span style="color:#666">ページに印を付けて飛ぶ</span></li>
+                <li><a href="#chapter-5-book">5.1 Book レイアウト</a> — <span style="color:#666">本をめくる感覚を再現する</span></li>
+                <li><a href="#chapter-5-horizontal">5.2 Horizontal レイアウト</a> — <span style="color:#666">左右にスクロールするページの流れ</span></li>
+                <li><a href="#chapter-5-vertical">5.3 Vertical レイアウト</a> — <span style="color:#666">上下にスクロールするページの流れ</span></li>
+                <li><a href="#chapter-5-table">5.4 Table レイアウト</a> — <span style="color:#666">全ページを一枚の表に並べる</span></li>
+            </ul>
+        </li>
+        <li><a href="#chapter-6">第6章: Ink リング</a> — <span style="color:#666">譜面に注釈を書き込む</span>
+            <ul>
+                <li><a href="#chapter-6-pen-pencil">6.1 Pen, Pencil</a> — <span style="color:#666">譜面のページに描く</span></li>
+                <li><a href="#chapter-6-rastrum">6.2 Rastrum</a> — <span style="color:#666">五線を描く</span></li>
+                <li><a href="#chapter-6-text">6.3 Text</a> — <span style="color:#666">ページにテキストボックスを置く</span></li>
+                <li><a href="#chapter-6-symbols">6.4 Symbols</a> — <span style="color:#666">ページに音楽記号を置く</span></li>
+                <li><a href="#chapter-6-cut-copy-paste">6.5 Cut, Copy, Paste</a> — <span style="color:#666">注釈オブジェクトを扱う</span></li>
+                <li><a href="#chapter-6-undo">6.6 Undo</a> — <span style="color:#666">Ink リングの直前の操作を取り消す</span></li>
+                <li><a href="#chapter-6-grid">6.7 Grid</a> — <span style="color:#666">採寸と配置のための目安グリッド</span></li>
+                <li><a href="#chapter-6-edit">6.8 Edit</a> — <span style="color:#666">注釈を移動・拡大縮小・回転する</span></li>
+            </ul>
+        </li>
+        <li><a href="#chapter-7">第7章: Page リング</a> — <span style="color:#666">ページとページ番号を扱う</span>
+            <ul>
+                <li><a href="#chapter-7-numbers">7.1 Numbers</a> — <span style="color:#666">ページ番号を設定する</span></li>
+                <li><a href="#chapter-7-add">7.2 Add</a> — <span style="color:#666">追加するページの体裁を設定する</span></li>
+                <li><a href="#chapter-7-cut-copy-paste">7.3 Cut, Copy, Paste</a> — <span style="color:#666">譜面内でページを複製・並べ替え・削除する</span></li>
+                <li><a href="#chapter-7-undo">7.4 Undo</a> — <span style="color:#666">直前のページ操作を取り消す</span></li>
+                <li><a href="#chapter-7-export-import">7.5 Export, Import</a> — <span style="color:#666">タブ間の共有バッファでページを受け渡す</span></li>
+                <li><a href="#chapter-7-merge">7.6 Merge</a> — <span style="color:#666">別の PDF を開いている譜面に結合する</span></li>
+                <li><a href="#chapter-7-flatten">7.7 Flatten</a> — <span style="color:#666">Ink の注釈を PDF 本体に焼き込む</span></li>
+                <li><a href="#chapter-7-magnify">7.8 Magnify</a> — <span style="color:#666">ページの一部を拡大する</span></li>
+            </ul>
+        </li>
+        <li><a href="#chapter-8">第8章: App リング</a> — <span style="color:#666">アプリの情報と表示の設定</span>
+            <ul>
+                <li><a href="#chapter-8-about">8.1 About</a> — <span style="color:#666">アプリの情報</span></li>
+                <li><a href="#chapter-8-theme">8.2 Theme</a> — <span style="color:#666">Light、Glass、Dark の表示テーマを切り替える</span></li>
+                <li><a href="#chapter-8-guide">8.3 Guide</a> — <span style="color:#666">このガイドブックをアプリ内で開く</span></li>
+                <li><a href="#chapter-8-storage">8.4 Storage</a> — <span style="color:#666">ブラウザのストレージを管理する</span></li>
+                <li><a href="#chapter-8-curtain">8.5 Curtain</a> — <span style="color:#666">画面を暗くする</span></li>
+                <li><a href="#chapter-8-wakelock">8.6 Wakelock</a> — <span style="color:#666">画面が自動的に暗くなるのを防ぐ</span></li>
+                <li><a href="#chapter-8-screen">8.7 Screen</a> — <span style="color:#666">全画面表示を切り替える</span></li>
+            </ul>
+        </li>
+        <li><a href="#chapter-9">第9章: More リング</a> — <span style="color:#666">演奏者のための道具箱</span>
+            <ul>
+                <li><a href="#chapter-9-detached">9.1 パネルの切り離し</a> — <span style="color:#666">パネルを切り離して画面を簡潔にする</span></li>
+                <li><a href="#chapter-9-metronome">9.2 Metronome</a> — <span style="color:#666">指揮の動きを再現するメトロノーム</span></li>
+                <li><a href="#chapter-9-stopwatch">9.3 Stopwatch</a> — <span style="color:#666">練習用のタイマー</span></li>
+                <li><a href="#chapter-9-clock">9.4 Clock</a> — <span style="color:#666">現在の時刻と日付</span></li>
+                <li><a href="#chapter-9-piano">9.5 Piano</a> — <span style="color:#666">調律と音高検出のできる鍵盤</span></li>
+                <li><a href="#chapter-9-review">9.6 Review</a> — <span style="color:#666">音声・映像を録って即座に聞き返す</span></li>
+                <li><a href="#chapter-9-keyboard">9.7 Keyboard</a> — <span style="color:#666">絞り込み検索付きの画面キーボード</span></li>
+                <li><a href="#chapter-9-volume">9.8 Volume</a> — <span style="color:#666">全体の音量調節</span></li>
+            </ul>
+        </li>
+        <li><a href="#chapter-10">第10章: 作者について</a></li>
+        <li><a href="#keyword-index">Index（索引 / 英語）</a></li>
+    </ul>
+</nav>
+
+<main id="guide-content" tabindex="-1">
+<section id="overture" class="overture">
+    <h2>Overture</h2>
+    <p><strong>Podium は:</strong></p>
+    <ul>
+        <li>譜面のための電子リーダーです</li>
+        <li>100% ブラウザだけで動き、100% オープンソース、100% 無料です</li>
+        <li>ログインも初期設定もファイルの取り込みも不要。インストールもいりません。開いてすぐ使えます</li>
+        <li>円形メニューと複数のレイアウトによる、独自のインターフェースを備えています</li>
+        <li>楽譜ライブラリではありません。ローカルやクラウドにある PDF ファイルをそのまま扱います</li>
+        <li>注釈機能が充実しています</li>
+    </ul>
+    <p><strong>...動作環境:</strong></p>
+    <ul>
+        <li>デスクトップ、ノート PC、Chromebook、タブレット、スマートフォン。ブラウザがあれば何でも動きます</li>
+    </ul>
+    <p><strong>...入力デバイス:</strong></p>
+    <ul>
+        <li>S-Pen、Apple Pencil、USI 対応スタイラス、そして指</li>
+        <li>マウス、トラックパッド、キーボード、フットペダル式のページめくり装置</li>
+    </ul>
+    <p><strong>...練習ツール:</strong></p>
+    <ul>
+        <li>指揮棒のアニメーション付きメトロノーム</li>
+        <li>チューナー内蔵のピアノ鍵盤</li>
+        <li>その場で再生できる音声・動画レコーダー</li>
+        <li>本物そっくりのストップウォッチと時計</li>
+    </ul>
+    <p><strong>...url:</strong><br>
+    <a href="https://studiop5.org/podium" target="_blank">https://studiop5.org/podium</a></p>
+    <p style="font-size:.85em;color:#666;">Podium は現状のまま、いかなる保証もなく提供されます。詳しい条件は<a href="https://www.gnu.org/licenses/agpl-3.0-standalone.html" target="_blank">ライセンス</a>をご覧ください。Podium で開く譜面ファイルを使用する権利があるかどうかは、利用者の責任で確認してください。</p>
+</section>
+
+<section id="chapter-1">
+    <h2>第1章: クイックスタート</h2>
+
+    <p>Podium へようこそ！この章では、使い始めるために必要なことをひととおり紹介します。それぞれの話題をさらに詳しく知りたいときは、本文中の章への参照をたどってください。</p>
+
+    <h3>3 ステップではじめる</h3>
+
+    <h4>1. 譜面を開く</h4>
+    <p><a href="https://studiop5.org/podium" target="_blank">https://studiop5.org/podium</a> で Podium を起動します。灰色の背景に円形メニューが表示され、Score セルが選択された状態になっています。Open セルから外へドラッグすると Open パネルが現れます。保存場所（Local、Google Drive、Dropbox、OneDrive、Recent）を選び、PDF の譜面までたどってタップすれば開きます。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/quickopen.jpg" alt="譜面を開く" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: 譜面を開く" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="譜面を開く（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/quickopen.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>Score セルが選択された円形メニューと、ファイル一覧を表示した Open パネル</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>ファイル管理の詳細は<a href="#chapter-4" class="chapter-link">第4章: Score リング</a>をご覧ください</p>
+
+    <h4>2. レイアウトを選ぶ</h4>
+    <p>譜面を開いたら、内側リングの Layout セルをタップします。外側リングに 4 つのレイアウトが表示されます。</p>
+    <ul>
+        <li><strong>Book:</strong> ページをめくるアニメーション付きの本の再現（読むのに最適）</li>
+        <li><strong>Horizontal:</strong> 左から右へページをスクロール（リハーサルに便利）</li>
+        <li><strong>Vertical:</strong> 上から下へページをスクロール（スマートフォン向き）</li>
+        <li><strong>Table:</strong> 全ページを格子状に一覧（ページの整理に便利）</li>
+    </ul>
+    <p>セルをタップするとそのレイアウトに切り替わります。セルから外へドラッグすると設定パネルが開きます。譜面の上で 2 本指のピンチ＆パン操作をすると、大きさと位置を変えられます。</p>
+
+    <figure>
+        <div class="video-container">
+            <div class="layout-grid">
+                <img src="assets/quicklayout1.jpg" alt="Book レイアウト" loading="lazy">
+                <img src="assets/quicklayout2.jpg" alt="Horizontal レイアウト" loading="lazy">
+                <img src="assets/quicklayout3.jpg" alt="Vertical レイアウト" loading="lazy">
+                <img src="assets/quicklayout4.jpg" alt="Table レイアウト" loading="lazy">
+            </div>
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: レイアウトを選ぶ" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="レイアウトを選ぶ（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/quicklayout.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>同じ譜面を 4 種類のレイアウトで並べた比較</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>レイアウトの操作と設定の詳細は<a href="#chapter-5" class="chapter-link">第5章: Layout リング</a>をご覧ください</p>
+
+    <h4>3. ページを移動し、書き込む</h4>
+    <p><strong>ページの移動:</strong> 譜面のページをタップ、スワイプ、またはフリングするとページがめくれます。背景のどこかを長押しするとメニューを呼び出せます。メニューを隠すには、好きな角か端へフリングするか、中央のグリップを長押しして左上に格納します。</p>
+
+    <p><strong>注釈:</strong> 内側リングの Ink セルをタップすると注釈を書き込めます。外側リングには次のツールが並びます。</p>
+    <ul>
+        <li><strong>Edit:</strong> 注釈の移動、拡大縮小、回転</li>
+        <li><strong>Pencil/Pen:</strong> フリーハンドまたは直線の描画</li>
+        <li><strong>Rastrum:</strong> 五線の描画</li>
+        <li><strong>Text:</strong> テキストボックスの追加</li>
+        <li><strong>Symbols:</strong> 楽譜記号の挿入</li>
+    </ul>
+    <p>Ink のツールはタップで有効になります。そのうえで譜面のページをタップまたはドラッグすると使えます。ツールの設定は、対応するセルからパネルをドラッグして開きます。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/quickannotate.jpg" alt="注釈を書き込んだ Ink リング" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: ページを移動し、書き込む" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="ページを移動し、書き込む（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/quickannotate.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>Ink リングを有効にし、さまざまな種類の注釈を書き込んだ譜面（ダークテーマ）</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+    <div class="note">Ink のツールはたいてい、4 秒間操作がないと<a href="#chapter-3-auto-deactivation" class="chapter-link">自動的に解除</a>されます。ページを移動したいときに誤って注釈を書き込んでしまわないためです。この動作は<a href="#chapter-3-cell-locking" class="chapter-link">セルのロック</a>で止められます。セルを長押しすると外側の縁に小さな丸が現れます。もう一度そのセルを押すか、別のセルを有効にすればロックは解除されます。</div>
+
+    <p>注釈のツールと使い方の全体は<a href="#chapter-6" class="chapter-link">第6章: Ink リング</a>をご覧ください</p>
+
+    <h3>インターフェースの要点</h3>
+
+    <h4>円形メニュー</h4>
+    <p>メニューは 3 つの部分からできています。</p>
+    <ul>
+        <li><strong>グリップ（中央）:</strong> ドラッグでメニューを移動、タップで折りたたみ／展開、長押しか端へのフリングで格納</li>
+        <li><strong>内側リング:</strong> 6 つのセル（Score、Layout、Ink、Page、App、More）。タップで選択</li>
+        <li><strong>外側リング:</strong> 選択中の内側リングのセルに応じた操作を表示</li>
+    </ul>
+    <p>どちらのリングも、円を描くようにドラッグまたはフリングすると回転します。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/quickmenu.jpg" alt="円形メニュー" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: 円形メニューを使う" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="円形メニューを使う（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/quickpanel.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>グリップ、内側リング、外側リングを示した円形メニュー</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>インターフェースの詳細は<a href="#chapter-3" class="chapter-link">第3章: インターフェースの基本</a>をご覧ください</p>
+
+    <h4>パネル</h4>
+    <p>方位磁針の針のような小さなひし形の印が付いたセルには、そのセルを設定するためのパネルが隠れています。こうしたセルから外へドラッグするとパネルが現れます。触れて、ドラッグして、離すというこの一続きの動作で、どのパネルも開いて位置を決めるところまで一度にできます。開いたあとも、ざらついた見た目のヘッダーをドラッグすればいつでも動かせます。パネルを隠すには、ヘッダーから好きな方向へフリングします。&#x1F5D9; ボタンをタップして閉じることもできます。</p>
+
+    <h4>大きさと位置を変える</h4>
+    <p>パネルがヘッダーのドラッグで動かせることは、すでに見たとおりです。さらに Podium では、メニュー、パネル、レイアウトなど、あらゆるものを 2 本指のピンチ＆パン操作（デスクトップでは Ctrl+マウス／Ctrl+ホイール）で拡大縮小・移動できます。詳しくは<a href="#chapter-3" class="chapter-link">第3章: インターフェースの基本</a>をご覧ください。</p>
+
+    <h4>ジェスチャー</h4>
+    <ul>
+        <li><strong>上へスワイプ:</strong> メニューの切り替え。初期状態に戻して中央に出す／折りたたんで左上に格納する。</li>
+        <li><strong>下へスワイプ:</strong> 全画面表示の切り替え（iPhone / iPad では全画面にできないため、代わりに App リングの Screen ボタンを使ってください）。</li>
+        <li><strong>長押し:</strong> その場所にメニューを呼び出す</li>
+    </ul>
+
+    <h3>作業を保存する</h3>
+    <p>内側リングの Score セルをタップし、Save をタップします（保存場所や名前を変えたいときは Save から外へドラッグします）。注釈と設定は PDF ファイルの中に保存されます。</p>
+    <figure>
+        <div class="video-container">
+            <img src="assets/quicksave.jpg" alt="Save パネル" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: 譜面を保存する" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="譜面を保存する（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/quicksave.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>ファイル名の入力欄と保存場所の選択肢を表示した Save パネル</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>保存、印刷、譜面の情報については<a href="#chapter-4" class="chapter-link">第4章: Score リング</a>をご覧ください</p>
+
+    <h3>ページを整理する</h3>
+    <p>ページの追加、削除、並べ替えをするには、内側リングの Page セルをタップします。外側リングには次のものが並びます。</p>
+    <ul>
+        <li><strong>Numbers:</strong> ページ番号と、ページめくりのキーボードショートカット（フットペダルを含む）の設定</li>
+        <li><strong>Add:</strong> 白紙ページの挿入</li>
+        <li><strong>Cut/Copy/Paste:</strong> 現在の譜面の中でページを並べ替え、複製、削除する</li>
+        <li><strong>Undo:</strong> 直前のページ操作を取り消す</li>
+        <li><strong>Export/Import:</strong> 共有バッファを介して他の Podium のタブとページをやり取りする</li>
+        <li><strong>Merge:</strong> 別の譜面を現在の譜面に取り込む</li>
+        <li><strong>Flatten:</strong> 注釈を PDF の内容そのものに変換する</li>
+        <li><strong>Magnify:</strong> ページの細部を拡大する</li>
+    </ul>
+    <p><strong>注:</strong> Ink のツールと同じく、Page のツールも数秒操作がないと自動的に解除されます。</p>
+
+    <p>共有バッファを使うと、Podium のタブ間でページを受け渡せます。Export でページをバッファへ送り、Import で別の譜面に挿入します。バッファはすべてのウェブアプリのタブとウィンドウで共有され、セッションをまたいで残ります。ウェブアプリ（studiop5.org）のタブ同士が 1 つのバッファを共有し、ブラウザ拡張のタブ同士が別のバッファを共有します。この境界を越えて受け渡すことはできません。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/quickpage.jpg" alt="Horizontal レイアウトでの Page リング" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: ページを整理する" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="ページを整理する（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/quickpage.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>Page リングを有効にした Horizontal レイアウト（ガラステーマ）</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <div class="note"><strong>ちょっとしたコツ:</strong> <a href="#chapter-5-table-reorder" class="chapter-link">Table レイアウト</a>では、ページを新しい場所へドラッグするだけで並べ替えられます。挿入先を示すように、ほかのページが左右に分かれて隙間をあけます。レイアウトの外へ完全にドラッグすれば、そのページを切り取ることもできます。この直接の操作は、Page リングのツールを使うより速いことがよくあります。</div>
+
+    <p>ページ管理の機能全体は<a href="#chapter-7" class="chapter-link">第7章: Page リング</a>をご覧ください</p>
+
+    <h3>練習ツール</h3>
+    <p>内側リングの More セルをタップすると、音楽家向けの練習ツールがひとそろい使えます。これらのパネルはたいてい、ヘッダーから切り離して画面の好きな場所に置けるので、練習しながら手の届くところに配置できます。</p>
+    <ul>
+        <li><strong>Metronome:</strong> 伝統的な振り子、または指揮の図形を描くアニメーション付きメトロノーム。タップでテンポを決めるか、パネルの操作で BPM を細かく設定します。</li>
+        <li><strong>Stopwatch:</strong> ラップ／スプリット付きの練習用タイマー。</li>
+        <li><strong>Clock:</strong> アナログの壁掛け時計。練習中に時間を把握できます。</li>
+        <li><strong>Piano:</strong> 実際に鳴らせる 5 オクターブの鍵盤。基準音（A4 の周波数）を変えられ、歴史的な音律（平均律、ミーントーンなど）を選べます。うなりを使った調律モードと、YIN による音高検出も備え、検出した音名とセント単位のずれを表示する電子チューナーとして使えます。</li>
+        <li><strong>Review:</strong> 直前の約 30 秒の音声・動画を録り、その場で再生します。波形とスペクトログラムで自分の演奏を目で確かめられます。練習の手早い振り返りにぴったりです。</li>
+        <li><strong>Volume:</strong> Podium のすべての音（メトロノーム、ピアノ、Review の再生）に効く音量調整。</li>
+    </ul>
+
+    <figure>
+        <img src="assets/quicktools.jpg" alt="練習ツール" loading="lazy">
+        <figcaption>Clock、Metronome、Stopwatch、Piano、Volume、Review のパネルを同時に開いた状態</figcaption>
+    </figure>
+
+    <p>それぞれの練習ツールの詳細は<a href="#chapter-9" class="chapter-link">第9章: More リング</a>をご覧ください</p>
+
+    <h3>キーボードとペダルへの対応</h3>
+    <p>Podium は、矢印キーの押下として動作するフットペダル式のページめくり装置で使えます。Page リングの Numbers パネルで矢印キーの動作を設定すると、ペダルを踏む操作をページめくりやブックマークの移動に割り当てられます。</p>
+    <p>キーボードショートカットの設定は<a href="#chapter-7-numbers" class="chapter-link">第7章: Page リング - Numbers</a>をご覧ください</p>
+
+    <h3>困ったときは</h3>
+    <p>内側リングの App セルをタップし、Guide セルをタップするとこの文書が開きます。</p>
+
+    <p>以上です。これで Podium を使い始められます。それぞれの機能を詳しく知りたいときは、以下の章をご覧ください。</p>
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+<section id="chapter-2">
+    <h2>第2章: Podium を動かす</h2>
+
+    <p>Podium のいちばん簡単な使い方は、URL から直接起動することです。インストールはいりません。ブラウザで <a href="https://studiop5.org/podium">studiop5.org/podium</a> を開けば、その場で使い始められます。登録もログインも初期設定も、いっさいありません。</p>
+
+    <p>とはいえ、インストールしておきたい場面もあります。とくに、インターネットにつながる前提が置けない本番で Podium を使うときです。</p>
+
+    <p><strong>オフラインでの利用。</strong> 一度訪れると、Podium は自動的に端末へ自身を保存するので、明示的にインストールしていなくても、インターネットなしで起動して動きます。ただし、本番などでオフラインで使う予定があるなら、<strong>インストールを強くおすすめします</strong>。明示的にインストールしていないと、ブラウザは空き容量が必要になったときや閲覧履歴を消したときに、保存された控えを何も言わずに捨ててしまうことがあります。いちばん必要なときに Podium がないという事態になりかねません。幸い Podium は非常に小さく、端末で使う容量はスマートフォンで撮った写真 2 枚ぶん程度です。</p>
+
+    <p><strong>ブラウザ拡張</strong>または <strong>PWA</strong> としてインストールすると、Podium は端末に常駐するようになります。拡張はそれ自体で完結しているため、デスクトップでオフラインに使うにはもっとも堅実な選択です。Android、デスクトップ、Chromebook では PWA のインストールも同じくらい確実です。例外は iPhone と iPad で、PWA としてインストールしてあっても、長く使わないでいるとシステムがインターネット接続を求めてくることがあります。ときどき Podium を開いておけば大丈夫です。</p>
+
+    <p><strong>iPad の画面の広さとジェスチャー。</strong> Podium を PWA としてインストールすることは、iPad ではとくに重要です。Safari は既定で、アドレスバー、タブ、ツールバーといった「装飾」を大きく表示し、貴重な画面を食います。iPad のホーム画面から PWA として起動すれば、Podium は全画面のスタンドアロン表示になり、画面のすべてを譜面に使えます。さらにスタンドアロン表示では、Safari の既定の画面端スワイプ（左端からのスワイプで履歴を戻る、など）が抑えられるので、本番中にページめくりやパネルのドラッグがブラウザの画面移動を誤って引き起こすことがありません。</p>
+
+    <p>オフラインで使えるのはローカルに保存した譜面だけである点に注意してください。クラウドにある譜面を開くにはインターネット接続が必要です。英語以外の言語で Podium を使う場合、ブラウザの翻訳にも接続が必要になることがあります。<a href="#chapter-2-language">2.5 Podium を自分の言語で使う</a>をご覧ください。</p>
+
+    <h3 id="chapter-2-extension">2.1 Browser Extension</h3>
+
+    <p>Podium は、対応するデスクトップブラウザ（Chrome、Edge、および Brave や Opera などの Chromium 系ブラウザ）でブラウザ拡張としてインストールできます。インストールすると、Podium のアイコンがブラウザの拡張機能メニュー（ツールバーのパズルピースのアイコン）から使えるようになります。すぐに取り出せるよう、はじめにピン留めしておくのがおすすめです。パズルピースをタップし、一覧から Podium を見つけて、その横のピンのアイコンをタップします。ピン留めしたら、ツールバーの Podium アイコンをタップして「Launch Podium」をタップすれば、アプリが直接開きます。譜面はいつもどおりに読み込めます。拡張はさらに、ウェブを見ている最中に譜面を素早く開く方法を 2 つ用意しています。</p>
+
+    <ul>
+        <li><strong>右クリックメニュー（コンテキストメニュー）:</strong> ウェブページ上の PDF リンクを右クリックして「Open with Podium」を選べます。閲覧中に譜面をつかみ取るいちばん速い方法です。<a href="https://imslp.org" target="_blank" rel="noopener noreferrer">IMSLP</a> の譜面では、IMSLP のアカウントにログインしてあるといちばんうまく動きます。ログインしていない場合はリンクが通常どおり開くので、ブラウザ側で免責事項の確認やログインを済ませてください。それ以外のサイトでは、初回だけそのサイトへのアクセスを求める許可ダイアログが出ます。これは標準的な安全対策で、Podium が PDF を「見て」ダウンロードできるようにするためのものです。一度許可すれば記憶され、二度目からは尋ねられません。</li>
+
+        <li><strong>ブラウザから取り込む:</strong> ブラウザの通常のタブで（ブラウザ内蔵のビューアで）すでに PDF を見ているなら、<strong>ツールバーの Podium アイコン</strong>（さきほどピン留めしたもの）をタップするだけです。PDF が見つかると、ポップアップの上部に「Open in Podium」ボタンが現れます。タップすればその場で譜面を取り込めます。右クリックメニューと同じく、そのサイトについて初回だけ許可が必要になることがあります。</li>
+    </ul>
+
+    <p>拡張はオンラインでもオフラインでも動くので、インターネット接続を頼れない本番にうってつけです。拡張は「Open with Podium」で開いた譜面の履歴を独自に持っており、ワンタップで開き直せます。</p>
+
+    <p>拡張は、<a href="https://www.cpdl.org" target="_blank" rel="noopener noreferrer">CPDL（Choral Public Domain Library）</a>や <a href="https://imslp.org" target="_blank" rel="noopener noreferrer">IMSLP</a> といったオンラインの楽譜ライブラリとよく合います。IMSLP ではアカウントにログインしておくのがもっとも快適で、途中のページを経ずに Podium で譜面がすぐ開きます。音楽家にとってかけがえのないこの資源を、ぜひ IMSLP の会員になって支えてください。CPDL は、きれいな現代的な浄書による声楽・合唱曲の PDF へ直接リンクしており、Podium でそのまま開けます。クラシックギターの曲なら、Jean-François Delcamp の <a href="https://classical-guitar-sheet-music.com" target="_blank" rel="noopener noreferrer">Classical Guitar Sheet Music and Tabs</a> も優れた資源です。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/imslp.jpg" alt="IMSLP 上の Podium のコンテキストメニュー" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: IMSLP の譜面を開く" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="IMSLP の譜面を開く（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/imslp.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>IMSLP で「Open with Podium」を表示した右クリックのコンテキストメニュー</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <div class="note">Podium の拡張は iPhone と iPad では使えませんが、後述のプログレッシブウェブアプリとしてインストールできます。Android では Chrome が拡張に対応していません。Kiwi Browser や Lemur Browser といった他社の Chromium 系ブラウザは Android で Chrome 拡張に対応しており、Edge for Android もベータ版で限定的に対応していますが、Podium はこれらのブラウザでまだ検証していません。</div>
+
+    <h3 id="chapter-2-pwa">2.2 Progressive Web App (PWA)</h3>
+
+    <p>Podium はプログレッシブウェブアプリとしてもインストールできます。インストールすると、Podium は端末上の独立したアプリとして現れ、オフラインでも動きます。</p>
+
+    <p><strong>デスクトップ（Chrome、Edge など）:</strong> Podium の URL を開いたとき、アドレスバーに Podium のアイコンと「アプリで開く」の案内が出ます。タップするとインストールできます。</p>
+
+    <figure>
+        <img class="small" src="assets/pwa.jpg" alt="アドレスバーに出る Chrome の PWA インストール案内" loading="lazy">
+        <figcaption>Podium のアイコンと「アプリで開く」の案内を表示した Chrome のアドレスバー（Linux）</figcaption>
+    </figure>
+
+    <p><strong>Android（Chrome）:</strong> ブラウザのメニュー（点 3 つ）をタップし、<strong>ホーム画面に追加</strong>を選びます。ポップアップで 2 つの選択肢が出るので、正しいアイコンとオフライン対応を備えた本来の PWA にするために<strong>インストール</strong>（「ショートカットを作成」ではないほう）を選んでください。Podium はアプリ一覧に現れ、そこからいつもどおりホーム画面に置けます。</p>
+
+    <p><strong>iPhone / iPad:</strong> Apple は PWA の自動インストール案内を出しません。インストールするには、モバイルブラウザ（Safari や Chrome など）で Podium を開き、ツールバーの<strong>共有ボタン</strong> <span style="display:inline-block;position:relative;width:.7em;height:1em;vertical-align:-.15em;">&#x2610;<span style="position:absolute;left:.1em;top:-.55em;font-size:1.2em;">&#x2191;</span></span>（iPhone では下の中央、iPad ではアドレスバーの横）をタップし、共有シートを下へスクロールして<strong>「ホーム画面に追加」</strong>をタップ、続いて<strong>「追加」</strong>をタップします。インストールすると Podium のアイコンがホーム画面に現れます。長押しするとシステムはこれを<strong>ブックマーク</strong>と呼びますが、ホーム画面のウェブアプリに対する Apple の通常の言い方なので心配はいりません。また、PWA を数週間使わないでいると、iPhone / iPad のシステムがアプリのデータを退避させることがあります。そうなると設定が初期化されたり、次の起動時にアプリを再確認するためインターネット接続が必要になったりします。これを防ぐには、ときどき Podium を開いておくだけでよいです。</p>
+
+    <div class="note">ブラウザのタブで Podium を動かす場合に比べた PWA の大きな利点は、ブラウザのツールバーもアドレスバーもその他の雑音もなく、つねに全画面を占めることです。PWA ならではの、アプリらしく整った使い心地です。そのため、PWA として動かしているときは Screen ボタンも全画面のスワイプも効きません。すでに全画面だからです。</div>
+
+    <div class="note">当然ながら、オフラインではローカルに保存した譜面だけが使えます。</div>
+
+    <h3 id="chapter-2-compat">2.3 ブラウザの対応状況</h3>
+    <p>Podium は現代的なブラウザすべてで動きます。機能の対応状況は下の表のとおりです。</p>
+    <div class="table-scroll" role="region" aria-label="ブラウザ対応状況の表" tabindex="0">
+    <table class="compat">
+        <caption>ブラウザ別の機能の対応状況</caption>
+        <tr>
+            <th scope="col">機能</th>
+            <th scope="col">Chrome / Edge</th>
+            <th scope="col">Firefox</th>
+            <th scope="col">Safari</th>
+        </tr>
+        <tr>
+            <th scope="row">基本機能</th>
+            <td class="yes">すべて使える</td>
+            <td class="yes">すべて使える</td>
+            <td class="yes">すべて使える</td>
+        </tr>
+        <tr>
+            <th scope="row">ローカルファイルの開く／保存</th>
+            <td class="yes">場所を記憶する</td>
+            <td class="partial">保存のたびに場所を選ぶ</td>
+            <td class="partial">保存のたびに場所を選ぶ</td>
+        </tr>
+        <tr>
+            <th scope="row">全画面のスワイプ</th>
+            <td class="yes">すべて使える</td>
+            <td class="yes">すべて使える</td>
+            <td class="partial">全画面にするには Screen ボタン（iPhone / iPad）</td>
+        </tr>
+        <tr>
+            <th scope="row">ブラウザ拡張</th>
+            <td class="yes">すべて使える</td>
+            <td class="no">非対応</td>
+            <td class="no">非対応</td>
+        </tr>
+        <tr>
+            <th scope="row">PWA のインストール</th>
+            <td class="yes">すべて使える</td>
+            <td class="no">非対応</td>
+            <td class="partial">iPhone / iPad: すべて使える。macOS は Sonoma 以降のみ。</td>
+        </tr>
+        <tr>
+            <th scope="row">クラウドストレージ</th>
+            <td class="yes">すべて使える</td>
+            <td class="yes">すべて使える</td>
+            <td class="yes">すべて使える</td>
+        </tr>
+        <tr>
+            <th scope="row">オフラインでの利用</th>
+            <td class="yes">ブラウザのタブでも動く。確実にするには PWA のインストールを推奨</td>
+            <td class="yes">ブラウザのタブでも動く。確実にするには PWA のインストールを推奨</td>
+            <td class="partial">ブラウザのタブでも動く。PWA のインストールを推奨。iPhone / iPad では長く使わないとキャッシュが失われることがある。</td>
+        </tr>
+    </table>
+    </div>
+    <p>もっとも快適に使うには、<strong>Chrome、Edge、またはそれに準ずるブラウザ</strong>をおすすめします。</p>
+
+    <h4>プラットフォーム別のおすすめブラウザ</h4>
+    <ul>
+        <li><strong>Windows、Mac、Linux:</strong> Chrome または Edge</li>
+        <li><strong>Chromebook:</strong> Chrome（標準搭載）</li>
+        <li><strong>Android のスマートフォン／タブレット:</strong> Chrome または Edge</li>
+        <li><strong>iPhone、iPad:</strong> どれでも同じ。iPhone と iPad ではすべてのブラウザが Safari と同じ挙動になるため、どのブラウザを使っても Safari の列が当てはまります</li>
+    </ul>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+    <h3 id="chapter-2-foot-pedal">2.4 Foot Pedal</h3>
+
+    <p>Podium は、演奏家がよく使う Bluetooth のフットペダル式ページめくり装置で使えます。たいていのフットペダルはキーボードの矢印キーを送るので、Podium はそれを検出してページめくりに使います。</p>
+
+    <p>矢印キー（つまりペダル）の動作は、<a href="#chapter-7-numbers" class="chapter-link">Numbers パネル</a>（Page リング → Numbers）で設定します。右／上の矢印に「次のページへ進む」か「次のブックマークへ飛ぶ」、左／下の矢印に「前のページへ戻る」か「前のブックマークへ飛ぶ」を割り当てられます。ブックマークのモードは繰り返しのある譜面でとくに便利です。繰り返す部分の最初のページへ移動してそのページ番号を長押しし、ブックマークを置いておけば、繰り返しに入るときに戻り側のペダルで一息に跳べます。</p>
+
+    <div class="note">フットペダルは、譜面のレイアウトを直接タップしたときと同じ、タップでのページめくりの設定に従います。めくる速さは、使っているレイアウトのパネルにある <strong>Pace</strong> スライダーで調整します。<a href="#chapter-5-page-turning" class="chapter-link">§5 ページめくり</a>をご覧ください。</div>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+
+    <h3 id="chapter-2-language">2.5 Podium を自分の言語で使う</h3>
+
+    <p>Podium のインターフェースは英語で書かれていますが、ブラウザ内蔵の翻訳を使えば、メニュー、パネル、説明を別の言語で読めます。このガイドブックも同じやり方で翻訳できます。使える言語はブラウザによって異なります。</p>
+
+    <p>英語が優先する言語に入っていない場合、ブラウザが Podium の翻訳を自動的に申し出ることがあります。その申し出を受けて、言語を選んでください。Chrome と Edge では、英語のページをつねに自動で翻訳したいときに <strong>英語を常に翻訳</strong> を選ぶこともできます。</p>
+
+    <p>自分から翻訳を求めるには、次のようにします。</p>
+    <ul>
+        <li><strong>デスクトップの Chrome または Edge:</strong> Podium の背景の何もない部分を右クリックし、<strong>日本語に翻訳</strong>を選びます。別の言語にしたいときはブラウザの翻訳の操作から選べます。</li>
+        <li><strong>Android、iPhone、iPad の Chrome:</strong> ブラウザの<strong>その他</strong>メニュー（点 3 つ）を開いて<strong>翻訳</strong>を選びます。</li>
+        <li><strong>iPhone / iPad の Safari:</strong> アドレスバーの左にある小さなページメニューのアイコン（長方形）をタップし、<strong>Web サイトを翻訳</strong>または<strong>［言語］に翻訳</strong>を選びます。目的の言語が出てこないときは、<strong>設定 → 一般 → 言語と地域</strong>で優先する言語を確認してください。文言やアイコンはシステムのバージョンによって変わります。</li>
+    </ul>
+
+    <p>タッチ画面では、長押しは引き続き Podium 自身のメニューを呼び出します。翻訳には上記のブラウザの操作を使ってください。英語に戻すには、ブラウザの翻訳の操作から元のページを表示するよう選びます。</p>
+
+    <div class="note"><strong>インストールしたアプリの場合:</strong> PWA ではブラウザのツールバーや翻訳の操作が隠れていることがあります。そこで翻訳が使えないときは、通常のブラウザのタブで <a href="https://studiop5.org/podium">studiop5.org/podium</a> を開き、そちらで翻訳してください。</div>
+
+    <div class="note"><strong>自動翻訳について:</strong> 音楽用語や短いラベルはうまく訳されないことがあり、訳が長くなって操作部からあふれることもあります。アイコンが何の操作かを見分ける助けになります。いつでも英語に戻せます。ブラウザの翻訳が変えるのはインターフェースだけで、PDF の譜面の中身は変わりません。</div>
+
+    <div class="note"><strong>翻訳されないもの:</strong> 訳すと誤りになるか使えなくなるため、わざとそのままにしてあるものがあります。クラウドサービスの名前（Drive、Dropbox、OneDrive）、ファイル名とフォルダー名、ページ番号、寸法と単位（pt、mm、in、Hz、cents、bpm）、ウェブのリンク、フォント名、標準の用紙サイズ、楽譜記号のグループ名、調律と音律の名前、カメラとマイクの名前です。画面上の Keyboard は決して翻訳されません。日付はもともと端末の言語と地域に従います。</div>
+
+    <div class="note"><strong>オフラインの場合:</strong> Podium 自身はインターネット接続なしで動きますが、ブラウザの翻訳はそうとは限りません。Chrome と Edge はどの端末でもインターネット越しに翻訳するため、オフラインでは Podium は英語で表示されます。Podium を翻訳したあとに接続が切れた場合、すでに画面に出ているものは訳されたままですが、そのあとに開くパネルやメッセージは英語で現れることがあります。iPhone、iPad、Mac の Safari と Firefox は、言語を端末にダウンロードしてあれば接続なしで翻訳できます。本番などで Podium を翻訳したままオフラインで使う予定があるなら、あらかじめ言語をダウンロードし、端末を機内モードにして翻訳が働くか確かめておいてください。</div>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+
+<section id="chapter-3">
+    <h2>第3章: インターフェースの基本</h2>
+
+    <p>Podium のインターフェースは 4 つの要素からできています。</p>
+    <ul>
+        <li><strong>背景:</strong> 作業場所。画面移動のジェスチャーを受け付けます。</li>
+        <li><strong>メニュー:</strong> 内側と外側のリングからなる 2 段の円形メニュー。</li>
+        <li><strong>パネル:</strong> メニューのセルから滑り出てくる浮かぶパネル。</li>
+        <li><strong>レイアウト:</strong> 譜面を表示する 4 つの方式。</li>
+    </ul>
+
+    <h3>移動と拡大縮小</h3>
+
+    <p>Podium のあらゆるもの（メニュー、パネル、レイアウト）は、大きさと位置を変えられます。</p>
+
+    <p><strong>砂地のような手触りの部分:</strong> メニュー中央のグリップ、パネルのヘッダー、スライダーには、砂のような模様が付いています。この模様の部分をドラッグすると、その要素を動かせます。</p>
+
+    <p><strong>2 本指のピンチ:</strong> ピンチズームでどの要素でも大きさを変えられます。挙動は指の位置によって決まります。</p>
+    <ul>
+        <li>少なくとも一方の指が対象（メニュー、パネル、レイアウト）の上にあれば、その対象の大きさが変わります</li>
+        <li>両方の指が背景の上にあれば、作業場所にあるすべてのものがまとめて変わります</li>
+    </ul>
+
+    <p><strong>2 本指のドラッグ:</strong> 2 本指でドラッグすると、最初に画面に触れた指の下にあるものが動きます（両方とも背景に触れていれば、すべてが動きます）。</p>
+
+    <p><strong>元に戻すには:</strong> レイアウトは Fit の設定どおりの状態に戻せます。<a href="#chapter-5-refit" class="chapter-link">第5章: Fit に戻す</a>をご覧ください。メニューとパネルにはそうした設定がないので、既定の状態に戻すには <a href="#chapter-8-storage" class="chapter-link">Storage &rarr; Menu</a> を使います。</p>
+
+    <p><strong>マウスの場合:</strong> Ctrl を押しながらドラッグで移動。Ctrl を押しながらホイールを回すと大きさが変わります。より細かく合わせたいときは Ctrl+Shift を押しながら回します。</p>
+
+    <h3>背景のジェスチャー</h3>
+    <ul>
+        <li><strong>上へスワイプ:</strong> メニューの切り替え。初期状態に戻して中央に出す／折りたたんで左上に格納する</li>
+        <li><strong>下へスワイプ:</strong> 全画面表示の切り替え（iPhone / iPad では全画面にできないため、代わりに Screen ボタンを使ってください）</li>
+        <li><strong>長押し:</strong> その場所にメニューを呼び出す</li>
+    </ul>
+
+    <h3>メニュー</h3>
+
+    <p>起動すると、Podium は灰色の背景に円形メニューを表示します。メニューは 3 つの部分からできています。</p>
+    <h4>グリップ（中央の円）</h4>
+    <ul>
+        <li><strong>タップ:</strong> メニューの折りたたみ／展開</li>
+        <li><strong>ドラッグ:</strong> メニューの移動</li>
+        <li><strong>フリング:</strong> 好きな角か端にメニューを格納</li>
+        <li><strong>長押し:</strong> メニューを折りたたみ、グリップを左上の角に格納</li>
+    </ul>
+
+    <h4>内側リング</h4>
+    <p>セルをタップすると有効になります。これによって外側リングに並ぶセルが決まります。内側リングで同時に有効にできるのは 1 つだけです。有効なセルは背景が白くなります。</p>
+
+    <h4>外側リング</h4>
+    <p>セルをタップすると有効になり、その動作が実行されます。外側リングで同時に有効にできるのも 1 つだけです。</p>
+
+    <p>使えないセルは灰色で表示されます。起動直後に使えるのは、内側リングの Score と More、外側リングの Open と New だけです。</p>
+
+    <h4 id="chapter-3-auto-deactivation">セルの自動解除</h4>
+
+    <p>Ink リングと Page リングのセルは、4 秒間操作がないと自動的に解除され、通常のページ移動に戻ります。これは重要な働きです。Ink や Page のセルが有効なあいだ、譜面のページ上のタッチ操作はページ移動として解釈されず、そのセルの動作に取られてしまいます。自動解除があるおかげで、ただページをめくろうとしたときに誤って線を描いたりページを消したりすることがありません。</p>
+
+    <h4 id="chapter-3-cell-locking">セルのロック</h4>
+
+    <p>セルが自動的に解除されないようにするには、そのセルを長押しします。ロックされたセルは外側の縁に丸が表示され、ずっと有効なままになります。もう一度そのセルを長押しするか、別のセルを選ぶとロックが外れます。セルのロックは Ink リングのすべてのセルと、Page リングのほとんどのセル（Numbers を除く）で使えます。</p>
+
+    <figure>
+        <img src="assets/interfacelocking.jpg" alt="外側の縁に丸が表示されたロック中のセル" loading="lazy">
+        <figcaption>外側の縁に丸が付いたロック中のセルの拡大</figcaption>
+    </figure>
+
+    <h4>リングの回転</h4>
+
+    <p>どちらのリングも、円を描くようにドラッグすると回転します。メニューが画面の端に寄っていて一部のセルが見えないときに役立ちます。リングを回せば、メニューを動かさずに隠れたセルを表に出せます。</p>
+
+    <figure>
+        <img src="assets/interfacerotating.jpg" alt="リングを回して隠れたセルを表に出す" loading="lazy">
+        <figcaption>メニューが画面の端にあるとき、リングを回して隠れたセルを出す</figcaption>
+    </figure>
+
+    <h3 id="chapter-3-panels">パネル</h3>
+
+    <p>小さなひし形の印が付いたメニューのセルには、パネルが隠れています。パネルを開くには、内側または外側へドラッグします。円を描く動きでなければパネルが現れます。円を描くとリングが回ってしまいます。</p>
+
+    <div class="note">パネルを出しても、対応するセルは有効になりません。タップによるセルの有効化は、まったく別のジェスチャーです。ただし、いったんパネルが出ていれば、その模様の付いたヘッダーをダブルタップしてセルを有効／無効にできます。</div>
+
+    <p><strong>パネルを動かす:</strong> 模様の付いたヘッダーをドラッグするか、2 本指（Ctrl+マウスのドラッグ）でパネルのどこからでもドラッグします。</p>
+
+    <p><strong>パネルの大きさを変える:</strong> 少なくとも一方の指をパネルに置いた 2 本指のピンチズームを使います（Ctrl+マウスホイール、より細かくするなら Ctrl+Shift+マウスホイール）。大きさが変わるのは選んだパネルだけです。</p>
+
+    <p><strong>閉じると隠すの違い</strong></p>
+    <ul>
+        <li><strong>閉じる:</strong> X ボタンをタップします。パネルは取り除かれます。</li>
+        <li><strong>隠す:</strong> ヘッダーからパネルをフリングします。パネルは隠れますが、また開けます。</li>
+    </ul>
+
+    <div class="note">ほとんどのパネルは、閉じても隠しても同じように動きます。ただし、動き続けるパネル（Metronome、Stopwatch、Clock、Review）は、隠すと裏で動き続けます。たとえば隠した Metronome は鳴り続けますが、閉じた Metronome は完全に止まります。</div>
+
+    <p><strong>ダブルタップで有効にする:</strong> パネルの模様の付いたヘッダーをダブルタップすると、対応するメニューのセルが有効になります。リングのセルをタップしたのとまったく同じです。2 回目のタップが長押し（0.5 秒ほど保つ）なら、そのセルはロックもされます。メニューに手を伸ばさずに、開いているパネルからツールを有効／無効にできる便利な近道です。</p>
+
+    <h3>スライダー</h3>
+
+    <p>多くのパネルでは、値の調整にスライダーを使います。細かく合わせたいときは、まずだいたいの値までスライダーをドラッグし、指を離さずにそのまま上か下へドラッグします。スライダーから上下に離れるほど、左右の動きが細かく効くようになります。</p>
+
+    <p>現在の値は、手で隠れない位置に浮かぶ小窓に表示されます。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/interfacesliders.jpg" alt="スライダーの精密モード" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: スライダーを細かく調整する" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="スライダーを細かく調整する（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/interfaceslider.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>精密モードのスライダー（ダークテーマ）: スライダーから離れる方向へドラッグし、そのまま左右にドラッグすると細かく調整できる</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+    <h3>ブラウザのタブの名前</h3>
+
+    <p>Podium は複数のブラウザのタブで同時に動かせ、タブのあいだで<a href="#chapter-7-export-import">共有バッファ</a>を共有します。ウェブアプリ（studiop5.org）のタブ同士が 1 つのバッファを共有し、ブラウザ拡張のタブ同士が別のバッファを共有します。この境界を越えて受け渡すことはできません。タブを見分けられるように、それぞれに強弱記号と階名から取った短い音楽的な名前が割り当てられます。<em>do, re, mi, fa, so, la, ti, ff, mf, mp, pp, sf</em> です。譜面を読み込んでいるとき、ブラウザのタブにはその譜面のファイル名が表示されます。そうでないときは <em>Podium</em> のあとに括弧でタブの名前が付き、たとえば <em>Podium (do)</em> となります。拡張のタブは代わりに角括弧を使って <em>Podium [do]</em> となるので、そのタブがウェブアプリか拡張かひと目で分かります。理屈のうえでは、Podium のタブを同時に 12 個まで開けます。ただし、タブごとにブラウザのメモリと処理能力を余分に使うので、2 つか 3 つを超えると実用にならないことを覚えておいてください。</p>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+<section id="chapter-4">
+    <h2><svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-right:0.3em"><use href="#gb-score"/></svg>第4章: Score リング</h2>
+
+    <p>PDF ファイルとして保存された譜面を扱います。</p>
+
+    <p>Score リングのセルはほとんどが灰色のままで、譜面を Open するか、空の譜面を New で作るまで使えません。</p>
+
+    <div class="note">Podium では、1 つのブラウザのウィンドウまたはタブで同時に開ける譜面は 1 つだけです。譜面を開くとき、いま開いている譜面に保存していない変更があると、その変更は失われます。そのため確認を求められます。複数の譜面を同時に開きたいときは、別のブラウザのウィンドウやタブで Podium を開いてください。<a href="#chapter-7" class="chapter-link">Page リング</a>を使えば、別のウィンドウで開いた譜面のあいだでページを複写できます。</div>
+
+    <figure>
+        <img src="assets/scorecells.jpg" alt="Score リングのメニューセル" class="cells" loading="lazy">
+        <figcaption>Score リングのメニューセルの図</figcaption>
+    </figure>
+
+    <ul>
+        <li><strong>Open（ドラッグ）:</strong> 外へドラッグすると、保存された PDF の譜面を開くパネルが現れます</li>
+        <li><strong>Open（タップ）:</strong> 譜面を開いたあとにこのセルをタップすると、保存された状態に戻します</li>
+        <li><strong>Save（ドラッグ）:</strong> 外へドラッグすると、いま開いている譜面を保存先へ書き出すパネルが現れます</li>
+        <li><strong>Save（タップ）:</strong> 譜面を開いたあとにこのセルをタップすると、元の場所に保存します</li>
+        <li><strong>New（ドラッグ）:</strong> 外へドラッグすると、新しく作る譜面の設定をするパネルが現れます</li>
+        <li><strong>New（タップ）:</strong> このセルをタップすると、空の譜面を新しく作ります</li>
+        <li><strong>Close（タップ）:</strong> いまの譜面を閉じます</li>
+        <li><strong>Print（ドラッグ）:</strong> 外へドラッグすると、いまの譜面を印刷するパネルが現れます</li>
+        <li><strong>Details（ドラッグ）:</strong> 外へドラッグすると、譜面の詳しい情報を表示するパネルが現れます</li>
+    </ul>
+
+    <h3 id="chapter-4-open-save">4.1 Score リング: Open, Save<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-open"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-save"/></svg></h3>
+
+    <p>PDF の譜面ファイルを開き、保存します。</p>
+
+    <p>Open と Save のどちらのパネルも、端末につながった保存先と、クラウドストレージ（Google Drive、Dropbox、Microsoft OneDrive）の両方で使えます。これらのサービスにはアカウントが必要で、それぞれの利用規約に従います。</p>
+
+    <h4>パネルの操作（両方に共通）</h4>
+
+    <p>どちらのパネルでも、上部のタブをタップすると保存先のサービスを選べます。タブの帯を左右にドラッグすると、ほかのタブに届きます。</p>
+
+    <p>どちらのパネルも、PDF ファイルとフォルダーの一覧をスクロール表示します。一覧を上下にドラッグまたはフリングすると中身をたどれます。並び順はアルファベットの A-Z で、フォルダーはファイルのあとにまとめられます。</p>
+
+    <p>フォルダーをタップすると、その中身で一覧が置き換わります。タブの帯の下にはフォルダーパスの帯があり、いまのフォルダーの位置を示します。フォルダー名かアイコンをタップすると、そのフォルダーを読み込みます。いまの（いちばん末尾の）フォルダー名をタップすると、クラウドの提供元から一覧を取り直します。New をタップすると新しいフォルダーを作れます。</p>
+
+    <p>ファイル／フォルダー一覧の各項目には、名前の変更と削除のアイコンがあります。複写・貼り付けの機能はありません。その代わりに、ファイルを開いて目的の場所に保存し、元のファイルを削除してください。</p>
+
+    <div class="note">Podium は意図的に、削除したファイルを完全に消すのではなく、保存先の提供元のごみ箱へ移します。挙動は提供元によって異なることがあります。ごみ箱を整理するには、その提供元にログインして、提供元自身の画面から操作してください。</div>
+
+    <h4>譜面を開く</h4>
+
+    <p>Open パネルで PDF の譜面ファイルをタップすると、その譜面をダウンロードして表示します。</p>
+
+    <figure>
+        <img src="assets/scoreopen.jpg" alt="Open パネル" loading="lazy">
+        <figcaption>クラウドストレージのタブとファイル一覧を表示した Open パネル</figcaption>
+    </figure>
+
+    <p>メニューの Open セルはタップもできます。すでに譜面を開いているときに Open セルをタップすると、いまのファイルを読み直します（つまり「保存した状態に戻す」）。</p>
+
+    <p><strong>Recent タブ:</strong> Recent タブからは、最近開いた 20 件の PDF の譜面にすぐ届きます。この一覧はブラウザのローカルストレージに保存されるので、端末とブラウザの組み合わせごとに中身が異なります。</p>
+
+    <h4>ローカルのファイル</h4>
+
+    <p>Local タブは、オペレーティングシステム内蔵のファイル選択画面に処理を渡します。この選択画面からは、端末に保存されたファイルだけでなく、システムに登録されたクラウドストレージにも届きます。</p>
+    <ul>
+        <li><strong>Linux（Chrome、Chromium）:</strong> 標準のファイルダイアログが開きます。</li>
+        <li><strong>iPhone / iPad（Safari、Chrome）:</strong> システムの書類選択画面が開き、iCloud Drive、「この iPhone / iPad 内」、および Google Drive、Dropbox、OneDrive など導入済みのファイル提供元が選べます。</li>
+        <li><strong>Mac（Safari）:</strong> Finder のダイアログが開き、iCloud Drive、ローカルのフォルダー、導入済みのファイル提供元の拡張に届きます。</li>
+        <li><strong>Windows（Chrome、Edge）:</strong> 標準のファイルダイアログが開き、ローカルのドライブ、OneDrive、ネットワーク上の場所に届きます。</li>
+        <li><strong>Android（Chrome）:</strong> システムのファイル選択画面が開き、内部ストレージ、Google Drive、最近のファイルに届きます。</li>
+    </ul>
+
+    <div class="note">ブラウザの安全対策によってローカルのファイルへの直接のアクセスが制限されているため、ファイル選択画面を特定のフォルダーから始めることはできません。</div>
+
+    <p><strong>ドラッグ＆ドロップ（デスクトップ）:</strong> デスクトップのブラウザでは、ファイル管理画面から PDF を Local タブへ直接ドラッグして Podium で開けます。</p>
+
+    <h4>譜面を保存する</h4>
+
+    <p>Save パネルには、ファイル名を編集する部品があります。その中にアップロードのボタンがあり、タップすると、いまの譜面を入力した名前で選んだフォルダーに保存します。</p>
+
+    <figure>
+        <img src="assets/scoresave.jpg" alt="Save パネル" loading="lazy">
+        <figcaption>ファイル名の編集欄とアップロードのボタンを備えた Save パネル</figcaption>
+    </figure>
+
+    <p>メニューの Save セルはタップもできます。譜面を開いているときに Save セルをタップすると、Save パネルを経ずに、いまのファイルを元の場所に保存します。</p>
+
+    <h4>Firefox でのローカル保存</h4>
+
+    <p>Firefox は File System Access API に対応していないため、ローカルへの保存のしかたが変わります。</p>
+    <ul>
+        <li><strong>デスクトップ（Linux、Windows、Mac）:</strong> 譜面が PDF として新しいタブで開きます。右クリックして「ページを別名で保存」を選び、ローカルに保存してください。</li>
+        <li><strong>Android:</strong> 譜面がダウンロードのボタン付きで新しいタブに開きます。ボタンをタップするとダウンロードされます。ファイル名は変えられず、フォルダーも選べません。ファイルはダウンロードのフォルダーに入ります。</li>
+    </ul>
+
+    <h4 id="firefox-settings">デスクトップの Firefox でおすすめの設定</h4>
+
+    <p>デスクトップの Firefox で Podium をもっとも快適に使うには、次の設定にしてください（Firefox の設定 &rarr; 一般）。</p>
+    <ul>
+        <li><strong>ファイルとアプリケーション &rarr; ダウンロード:</strong> 「ファイルごとに保存先を指定する」を選びます。これで譜面をローカルに保存するときにファイル名と場所を選べます。</li>
+        <li><strong>ファイルとアプリケーション &rarr; プログラム:</strong> 一覧から「Portable Document Format (PDF)」を見つけて「毎回確認する」に設定します。これで Firefox が PDF を内蔵ビューアで勝手に開かなくなり、代わりに Podium で開くことを選べます。</li>
+    </ul>
+
+    <div class="note">Android、iPhone、iPad の Firefox は Podium での利用をおすすめしません。これらの端末では Chrome（Android）または Safari（iPhone / iPad）がもっとも快適です。</div>
+
+    <p>保存のときにファイル名を指定できないプラットフォームでは、先に Details パネル（Score リング &rarr; Details）で譜面の名前を変えておいてください。拡張子 .pdf は付けなくてよく、なければ保存時に自動的に補われます。</p>
+
+    <h4>複製の保護と制限付きの PDF</h4>
+
+    <p>Podium は、ウェブブラウザが標準で扱えない高度な機能（JBIG2 や JPEG 2000 による圧縮など）を使った PDF を自動的に見分けます。変更を禁じる安全上の制限が掛かったファイルも見分けます。そうしたファイルを開くと、Podium は警告のダイアログを表示します。</p>
+
+    <p>こうした制限付きのファイルでも Podium で表示したり注釈を書き込んだりはできますが、PDF の規格上、注釈、メタデータ、ページの変更（挿入や削除など）をファイルに保存できないことがあります。保護された文書を保存しようとすると、Podium は代わりに元のままの「きれいな」PDF を保存する選択肢を示します。この代替の保存があるので、Podium での変更は残せなくても、文書そのものはローカルやクラウドに控えておけます。</p>
+
+    <h3 id="chapter-4-new">4.2 Score リング: New<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-new-score"/></svg></h3>
+
+    <p>空の譜面を新しく作ります。</p>
+
+    <p>空の譜面は New セルを有効にすると作られます。できあがる譜面は、New パネルで指定したページ数、大きさ、背景の色と不透明度に従います。新しい譜面には既定の名前（たとえば「Opus 42」）が付きます。必要なら、保存する前に <a href="#chapter-4-details">Details パネル</a>で名前を変えてください。</p>
+
+    <figure>
+        <img src="assets/scorenew.jpg" alt="New パネル" loading="lazy">
+        <figcaption>ページ数、大きさの選択肢、背景の設定を表示した New パネル</figcaption>
+    </figure>
+
+    <p>New パネルでは次のものを設定できます。</p>
+    <ul>
+        <li><strong>Number of Pages:</strong> 譜面の最初のページ数を決めます（あとから Page リングでページを足したり減らしたりできます）</li>
+        <li><strong>Page Size:</strong> ドロップダウンから標準の用紙サイズ（Letter、Legal、A4 など）を選ぶか、自由な寸法を指定します</li>
+        <li><strong>Background Color:</strong> 色見本をタップして、新しいページの背景色を選びます</li>
+        <li><strong>Background Opacity:</strong> 背景色の不透明度を調整します</li>
+    </ul>
+
+    <h3 id="chapter-4-close">4.3 Score リング: Close<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-close"/></svg></h3>
+
+    <p>いまの譜面を閉じます。</p>
+
+    <p>ふだんの使い方では、新しい譜面を開くだけで十分です。Podium がいまの譜面を自動的に閉じます。<strong>Close</strong> は、譜面を開かずに Podium の練習ツールを使いたい人のために用意されています。</p>
+
+    <p>いまの譜面に保存していない変更があるときは、閉じる前に確認のダイアログが出ます。</p>
+
+    <h3 id="chapter-4-print">4.4 Score リング: Print<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-print"/></svg></h3>
+
+    <p>いまの譜面を、注釈ありまたは注釈なしで印刷します。</p>
+
+    <figure>
+        <img src="assets/scoreprint.jpg" alt="Print パネル" loading="lazy">
+        <figcaption>Ink の選択肢とページ範囲の設定を表示した Print パネル</figcaption>
+    </figure>
+
+    <p>Podium では、利用者が書き込んだ注釈を Ink と呼びます。Print パネルでは印刷の設定ができます。</p>
+    <ul>
+        <li><strong>Ink:</strong> 書き込んだ注釈を含めて印刷します</li>
+        <li><strong>No Ink:</strong> 書き込んだ注釈を含めずに印刷します（元の PDF だけ）</li>
+        <li><strong>Page Range:</strong> 最初と最後のページを指定して、譜面の一部だけを印刷します</li>
+    </ul>
+
+    <div class="note"><strong>iPhone / iPad:</strong> Safari はウェブアプリから印刷ダイアログを自動で開くことに対応していません。Ink または No Ink をタップすると、PDF が新しいタブで開きます。そこからツールバーの共有ボタン <span style="display:inline-block;position:relative;width:.7em;height:1em;vertical-align:-.15em;">&#x2610;<span style="position:absolute;left:.1em;top:-.55em;font-size:1.2em;">&#x2191;</span></span>（iPhone では下の中央、iPad ではアドレスバーの横）をタップし、<strong>プリント</strong>を選んでください。</div>
+
+    <div class="note">大きな譜面や、内容がとくに詰まっている、あるいは符号化が粗く最適化されていない PDF は、印刷に失敗することがあります。印刷が失敗するときは、ページ範囲を分けて、いくつかの小さなまとまりに分けて印刷してみてください。</div>
+
+    <h3 id="chapter-4-details">4.5 Score リング: Details<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-details"/></svg></h3>
+
+    <p>Details パネルは、いま開いている譜面についての情報を一覧で表示します。</p>
+
+    <figure>
+        <img src="assets/scoredetails.jpg" alt="Details パネル" loading="lazy">
+        <figcaption>譜面のメタデータと表示の選択肢を表示した Details パネル</figcaption>
+    </figure>
+
+    <p><strong>譜面の名前:</strong> パネルの上部には、譜面のファイル名を示す編集できる欄があります。この欄を直せば、保存する前に譜面の名前を変えられます。拡張子 .pdf は付けなくてよく、なければ保存時に自動的に補われます。Firefox や Android のように、保存時にファイル名を指定できないプラットフォームでとくに役立ちます。</p>
+
+    <p><strong>メタデータ:</strong> パネルには、Podium が作ったメタデータ（譜面を最後に変更した日時など）と、元の PDF にあったメタデータが表示されます。元の作者、作成日、その他の文書の属性など、その譜面の出どころに関する情報が含まれることもあります。</p>
+
+    <p><strong>ページの大きさの扱い:</strong> Podium では、譜面のすべてのページを同じ大きさで表示します。PDF ファイル一般では必ずしもそうではありません。1 つの PDF には大きさの異なるページがいくつも入りえます。たとえば Letter と A4 のページが混ざっていたり、縦向きの標準のページのあいだに横長の折り込みページが挟まっていたりします。IMSLP のような図書館由来のスキャン譜面ではよくあることで、ページが別々の時期や別々の版からスキャンされている場合があります。Podium は既定で、PDF のいちばん大きなページに合わせてページの大きさを決め、それより小さいページをその枠の中央に置きます。Details パネルには、小さいページの扱いを決めるラジオボタンがあります。</p>
+    <ul>
+        <li><strong>Center:</strong>（既定）小さいページを、そろえた大きさの枠の中央に置きます</li>
+        <li><strong>Expand:</strong> 小さいページを、長い辺（縦または横）がそろえた大きさいっぱいになるまで拡大し、もう一方の辺を中央に置きます</li>
+    </ul>
+
+    <p><strong>表示の品質:</strong> パネルで表示の品質を設定できます。品質を上げるとメモリを多く使いますが、描画が鮮明になります。</p>
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+<section id="chapter-5">
+    <h2><svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-right:0.3em"><use href="#gb-layout"/></svg>第5章: Layout リング</h2>
+
+    <p>譜面をどう表示するかを決めます。</p>
+
+    <figure>
+        <img src="assets/layoutcells.jpg" alt="Layout リングのメニューセル" class="cells" loading="lazy">
+        <figcaption>Layout リングのメニューセル</figcaption>
+    </figure>
+
+    <p>Podium には 4 つのレイアウト方式があります。</p>
+    <ul>
+        <li><strong>Book:</strong> ページをめくるアニメーションで実物の本を模します</li>
+        <li><strong>Horizontal:</strong> 横方向に連続してスクロールします</li>
+        <li><strong>Vertical:</strong> 縦方向に連続してスクロールします</li>
+        <li><strong>Table:</strong> 全ページを縮小図の格子で一度に見せます</li>
+    </ul>
+
+    <p>譜面は既定で、そのブラウザ／プラットフォームで最後に使ったレイアウトで開きます。まだなければ Book です。レイアウトは、使いたいセルをタップすればいつでも変えられます。譜面を保存するたびに、最後のレイアウトが PDF のメタデータとして、またブラウザのローカルストレージにも記録されます。</p>
+
+    <p id="chapter-5-refit"><strong>Fit に戻す:</strong> 動かして拡大した表示を元に戻し、<strong>Fit</strong> の設定どおりの位置と大きさに戻す方法が 3 つあります。レイアウトのパネルで、すでに選ばれている Fit ボタンをタップする。Layout リングで、すでに有効なレイアウトのセルをタップする。そして、譜面の上を 2 本指でダブルタップする。最後のものは何も開いておく必要がなく、しかも譜面を動かしたのと同じ 2 本の指でできます。2 本指で、指を滑らせずに、短く 2 回タップしてください。2 本指で 1 回タップしただけでは何も起きないので、画面に手を置いてしまっても心配はいりません。</p>
+
+    <p id="chapter-5-remembered-view"><strong>表示位置の記憶:</strong> レイアウトをどのように動かし、拡大しても（たとえばタブレットで画面いっぱいになるよう譜面をドラッグしてピンチしても）、Podium はその位置と大きさを覚えています。レイアウトごとに別々の表示を保つので、レイアウトを切り替えて戻ってくると、それぞれ離れたときのままに復元されます。表示は譜面とともに保存されるので、ファイルを開き直すと、前回やめたところにそのまま戻ります。</p>
+
+    <div class="note">記憶された表示は、それを記録したときの画面の大きさに結び付いています。窓の大きさが違う端末で譜面を開き直したとき、あるいはタブレットを縦横に回転させただけでも、Podium は保存された位置を無視して既定の収まり方に戻します。譜面が画面の外に行ってしまうことが決して起きないようにするためです。</div>
+
+    <div class="note">Podium のレイアウトでは、すべてのページが同じ大きさでなければなりません。譜面のファイルを開くと、まずページの幅と高さの最大値が求められます。そのうえで、最大値より小さいページは既定で中央に置かれ、四辺を灰色の縁で埋められます。別の選択として、小さいページを拡大することもできます。長い辺がページいっぱいになるまで譜面を拡大し、もう一方の辺を中央に置きます。この挙動の設定は <a href="#chapter-4-details" class="chapter-link">Details パネル</a>をご覧ください。</div>
+
+    <h4 id="chapter-5-page-turning">ページめくり</h4>
+    <p>Book、Horizontal、Vertical のレイアウトはいずれも、4 つのページ移動の方法に対応しています。</p>
+    <ul>
+      <li><strong>タップ:</strong> レイアウトの <strong>Pace</strong> 設定（そのパネルで設定します）で決まる速さでページをめくります。Book レイアウトでは Pace は 1 回めくるのにかかる秒数、Horizontal と Vertical では 1 回スナップするのにかかる秒数です。</li>
+      <li><strong>ドラッグ:</strong> ページに触れてドラッグし、止めてから指を離します。Book レイアウトでは、本の中央の背を越えて離したかどうかで、ページが前へ<em>めくれる</em>か元の位置へ<em>戻る</em>かが決まります。Horizontal と Vertical では、レイアウトの <strong>Snap</strong> 設定に従って、いちばん近いスナップ位置に吸い付きます。Snap を切っているときは、ドラッグでページの区切りに吸い付かず自由にスクロールします。いずれの場合も、スナップやめくり、戻りの速さは <strong>Pace</strong> 設定で決まります。</li>
+      <li><strong>フリング:</strong> 素早くドラッグして勢いをつけたまま離します。フリングの速さがめくる速さを決めます。速くフリングすれば速くめくれ、ゆっくりならゆっくりめくれます。Pace 設定は無視されます。Snap を切った Horizontal と Vertical では、フリングするとレイアウトの勢いが尽きるまで自由にスクロールします。</li>
+    </ul>
+
+   <div class="note">フリングの速さは水平方向（Vertical レイアウトでは垂直方向）だけで測られます。まっすぐ水平にフリングすると、同じ力でいちばん速くめくれます。ゆっくり加減したページめくりをしたいときは、斜め（たとえば 45°）にフリングしてみてください。人によっては、水平方向にゆっくり動かそうとするより、こちらのほうがやりやすいです。</div>
+
+    <ul>
+      <li><strong>ページャー:</strong> Book、Horizontal、Vertical のレイアウトには譜面の向かい合う二つの端に余白の帯があり、それぞれドラッグできるページ番号（<em>ページャーカーソル</em>）が入っています。先頭側（左、または上）のカーソルは見えている最初のページの番号、末尾側のカーソルは最後のページの番号を示します。カーソルをドラッグすると譜面の中を素早く移動できます。ドラッグしているあいだ、選んでいるページ番号が指に付いて浮かんで表示されます。指でカーソルそのものが隠れてしまうときに役立ちます。長い譜面でより細かく合わせたいときは、カーソルを帯から離す方向へドラッグしてください。離れるほど細かく効くようになり、目当ての 1 ページにぴったり着けられます。そのレイアウトのパネルにある <strong>Numbers</strong> のボタンで、帯をどちらの一対の端に置くかを選べます。<strong>L-R</strong> は譜面の左右、<strong>T-B</strong> は上下、<strong>Off</strong> はページ番号を出しません。帯は、それが沿っている方向から 45 ピクセルほどを取ります。ですから、画面に余裕のある方向へ帯を移せば、譜面に使える面積が増えます。縦長のページを横長の画面で見るときは左右に余裕があり、同じページを縦長の画面で見るときは上下に余裕があります。2 段目のボタンは、帯が自分の余白を取るか（<strong>Inset</strong>）、ページそのものの端に重ねて描くか（<strong>Over</strong>）を決めます。重ねれば譜面の面積はまったく減りません。彫版された譜面はたいてい、ページ番号を置けるだけの余白を持っています。番号を切ると帯はごく細くなりページ番号も隠れますが、帯の上でのドラッグによる移動は引き続き効き、浮かぶ表示も出ます。</li>
+    </ul>
+
+    <h4 id="chapter-5-bookmarks">ブックマーク</h4>
+    <p>ブックマークは、素早く移動するためにページに印を付けるものです。Book、Horizontal、Vertical のレイアウトでは、まず目当てのページへ移動し、ページャーカーソル——ページ番号そのもの、またはその前後およそ番号 3 個分の範囲——を長押しすると、ブックマークが付いたり外れたりします。付くのは常に読んでいるページで、指が覆っていたページではありません。長い譜面では 1 ページがページャーの 1〜2 ピクセルしかなく、指先よりはるかに細いからです。そこから離れた位置での長押しはブックマークの操作ではなく、単にゆっくりしたタップとして、そのページへ移動します。</p>
+    <p>ブックマークは余白帯に色付きのつまみとして現れます。つまみを押すと、そのページがページャー上でどれほど狭くても、ちょうどそのページへ跳べます。つまみを長押しすると、今いるページから動かずにそのブックマークを外せます。Table レイアウトでは、ページを長押しすると現在のページになり、同時にブックマークが切り替わります。ブックマークは譜面とともに保存されます。</p>
+    <p>ブックマークのつまみの長さは、ページャー上での 1 ページの幅に対応しています。長い譜面ではつまみが短くなるので、その譜面が何ページあるかが目で分かります。ただし見えて押せるように数ピクセルより短くはならないので、非常に長い譜面で隣り合うページにブックマークがあると、つまみは重なり、押したときに反応するのは最後のものになります。</p>
+    <p>つまみは、余白帯から少しはみ出した先——そのつまみが指しているページの端の上——でも反応するので、つまみそのものをぴたりと押す必要はありません。また余白帯は、その<em>外側</em>、レイアウトの外に残っている画面の余白でも反応します。余白帯が画面の端ぎりぎりを走っているときに便利です。近くにつまみがない位置では、帯の幅のどこを押しても今までどおり位置なりのページへ移動するので、ブックマークがあることでその周辺のページが押せなくなることはありません。引き換えに一つ失うものがあります。この細い余白の帯の中では、長押しによるメニューの呼び出しが効かなくなり、左右に走る余白帯の脇では、メニューを格納する上下スワイプも使えません。それ以外の余白はこれまでどおりです。</p>
+    <p>ブックマークのあるページの上でページャーカーソルをドラッグすると、浮かぶ表示がそのブックマークの色で描かれます。隣り合うつまみが小さすぎて直接押せないときでも、目当てのブックマークへ移動しやすくなります。</p>
+
+    <h3 id="chapter-5-book">5.1 Layout リング: Book<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-book"/></svg></h3>
+
+    <p>実物の本を再現します。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/layoutbook.jpg" alt="Book レイアウト" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: Book レイアウトでページをめくる" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="Book レイアウトでページをめくる（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/layoutbook.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>ページとパネルを表示した Book レイアウト</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <div class="note">Book レイアウトは見た目が心地よいだけでなく、実物の譜面を使う本番と同じやり方でページめくりを練習できます。本番でいつどうめくるかを、体に覚えさせる助けになります。</div>
+
+    <p>Book パネルの Fit ボタンは、譜面の最初の大きさを決めます。</p>
+    <ul>
+        <li><strong>Auto:</strong> 譜面全体が画面に収まるように Width と Height のどちらかを選びます</li>
+        <li><strong>None:</strong> PDF に記された大きさのまま。Podium は PDF の「ポイント」（1/72 インチ）を「CSS ピクセル」（画面の標準的な単位）に 1 対 1 で対応させます</li>
+        <li><strong>Width:</strong> 画面の幅に合わせます</li>
+        <li><strong>Height:</strong> 画面の高さに合わせます</li>
+    </ul>
+
+    <p>最初の配置のあとは、2 本指のピンチ・パン・ズームで譜面を好きな位置と大きさにできます。マウスの場合は Ctrl+ドラッグ／Ctrl+ホイール（より細かくするなら Ctrl+Shift+ホイール）。</p>
+
+    <p>パネルの <strong>Pace:</strong> スライダーは、タップまたはドラッグしたときにページがめくれる速さを決めます。</p>
+
+    <p>ページ番号の表示は Book パネルで切り替えられます。現在のページ番号はレイアウトの左右に表示されます。このページ番号をドラッグすると素早く別のページへめくれます。</p>
+
+    <div class="note">実物の本は、1 枚に表と裏があるためページ数が必ず偶数になります。PDF の譜面のページ数が奇数のとき、最後のページは右側（裏表紙の内側の位置）に表示され、左へめくることはできません。</div>
+
+    <h3 id="chapter-5-horizontal">5.2 Layout リング: Horizontal<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-horizontal-scroll"/></svg></h3>
+
+    <p>譜面を、横方向に連続してスクロールするページの流れとして表示します。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/layouthorizontal.jpg" alt="Horizontal レイアウト" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: Horizontal レイアウトを使う" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="Horizontal レイアウトを使う（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/layouthorizontal.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>ページとパネルを表示した Horizontal レイアウト（ガラステーマ）</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>Horizontal パネルの Fit ボタンは、レイアウトの最初の大きさを決めます。</p>
+    <ul>
+        <li><strong>Auto:</strong> 譜面全体が画面に収まるように Width と Height のどちらかを選びます。</li>
+        <li><strong>None:</strong> PDF に記された大きさのまま（Podium は PDF の「ポイント」を「CSS ピクセル」に 1 対 1 で対応させます）。</li>
+        <li><strong>Width:</strong> 画面の幅に合わせます。</li>
+        <li><strong>Height:</strong> 画面の高さに合わせます。</li>
+    </ul>
+
+    <p>最初の配置のあとは、2 本指のピンチ・パン・ズームで譜面を好きな位置と大きさにできます。マウスの場合は Ctrl+ドラッグ／Ctrl+ホイール（より細かくするなら Ctrl+Shift+ホイール）。</p>
+
+    <p>パネルの <strong>Show:</strong> スライダーは、同時に見えるページ数（1〜8）を決めます。</p>
+
+    <p>パネルの <strong>Snap:</strong> スライダーは、ページをタップ、ドラッグ、フリングしたときに何ページ分進むかを決めます。スクロールしたあと、いちばん左といちばん右のページが左右のスクローラーにそろうようにするためです。Snap: スライダーをいちばん左まで動かすと、ページへの吸い付きを完全に切れます。1/2、1/3、1/4 ページの区切りに吸い付かせることもできます。</p>
+
+    <p>パネルの <strong>Gap:</strong> スライダーは、各ページの周りにどれだけ余白を取るかを、ページの幅に対する割合で決めます。</p>
+
+    <p>パネルの <strong>Pace:</strong> スライダーは、タップまたはドラッグしたときにページがめくれる速さを決めます。</p>
+
+    <p>ページ番号の表示はパネルで切り替えられます。現在のページ番号はレイアウトの左右に表示されます。このページ番号をドラッグすると素早く別のページへスクロールできます。</p>
+
+    <h3 id="chapter-5-vertical">5.3 Layout リング: Vertical<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-vertical-scroll"/></svg></h3>
+
+    <p>譜面を、縦方向に連続してスクロールするページの流れとして表示します。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/layoutvertical.jpg" alt="Vertical レイアウト" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: Vertical レイアウトを使う" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="Vertical レイアウトを使う（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/layoutvertical.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>ページとパネルを表示した Vertical レイアウト（ダークテーマ）。ブックマークが 4 つ見えています。</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>このレイアウトの設定は Horizontal レイアウトとまったく同じです。前の節をご覧ください。</p>
+
+    <div class="note">フットペダルがあるなら、Vertical レイアウトで <strong>Pace:</strong> をとても遅くしてみてください。<strong>Snap:</strong> をたとえば 1/2 ページにし、Pace を 1 回 8 秒くらいにすると、ペダルを踏むたびに読みながらページが少しずつ上へスクロールしていき、ページの境目をまたいでも楽に読み続けられます。この使い方は上の動画で紹介しています。</div>
+
+    <div class="note"><strong>Snap を切ってみてください。</strong> Snap スライダーをいちばん左まで動かすと切れます。吸い付きを切ると、ページは自由に連続してスクロールするので、譜面をちょうど必要な位置に置けます。あるページの下端を次のページの上端のすぐ上にそろえれば、ページのあいだで視線が途切れることもなくなります。</div>
+
+    <figure>
+        <img src="assets/layoutphone.jpg" alt="スマートフォンでの Vertical レイアウト" loading="lazy">
+        <figcaption>スマートフォンでの Vertical レイアウト</figcaption>
+    </figure>
+
+    <div class="note">スマートフォンや小さなタブレットで見るなら、Vertical レイアウトがいちばん快適なことが多いです。スマートフォンは横向きがよく合います。全画面表示にし、Numbers を切り、Page Fit: Width、Show: 1 ページ、Snap: 切る、と設定してください。パネルは閉じるボタンの X をタップするか、フリングするだけで片付けられます。あとは親指で譜面をスクロールします。コツ: 譜面の末尾に白紙のページを足しておくと、最後のページの下端まできちんとスクロールして見られます。</div>
+
+    <h3 id="chapter-5-table">5.4 Layout リング: Table<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-table"/></svg></h3>
+
+    <p>譜面の全ページを 1 つの表に並べて表示します。</p>
+
+    <p>（Page リングを使って）ページを足したり並べ替えたりするとき、また長い譜面で目当てのページを素早く見つけるときに便利です。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/layouttable.jpg" alt="Table レイアウト" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: Table レイアウトを使う" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="Table レイアウトを使う（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/layouttable.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>ページとパネルを表示した Table レイアウト</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>Table パネルの Fit ボタンは、レイアウトの最初の大きさを決めます。</p>
+    <ul>
+        <li><strong>Width:</strong> 画面の幅に合わせます。</li>
+        <li><strong>Height:</strong> 画面の高さに合わせます。</li>
+    </ul>
+
+    <p>最初の配置のあとは、ピンチズームで譜面を好きな大きさと位置にできます。</p>
+
+    <p>パネルの <strong>Pages per row:</strong> スライダーは、1 行に並べるページ数を決めます。</p>
+
+    <p>パネルの <strong>Horizontal Gap</strong> スライダーは、隣り合うページの横の間隔を、ページの幅に対する割合で決めます。負の値にすると、ページがトランプの札のように重なって表示されます。</p>
+
+    <p>パネルの <strong>Vertical Gap</strong> スライダーは、隣り合うページの縦の間隔を、ページの高さに対する割合で決めます。負の値にすると、ページがトランプの札のように重なって表示されます。</p>
+
+    <p>ページ番号の表示はパネルで切り替えられます。</p>
+
+    <p id="chapter-5-table-current-page"><strong>現在のページ:</strong> いつでも必ず現在のページが 1 つあり、ほかより高い解像度で、少し大きく、すべてのページの手前に描かれます。ページをタップすると、それが現在のページになります。別のレイアウトに切り替えると、そのレイアウトは現在のページから始まります。</p>
+
+    <div class="note">Table レイアウトでは、現在のページ以外に注釈を書き込むことはできません。注釈については<a href="#chapter-6" class="chapter-link">Ink リング</a>の章をご覧ください。</div>
+
+    <p id="chapter-5-table-reorder"><strong>ページの並べ替え:</strong> ページを新しい場所へドラッグします。レイアウトの上でページを運んでいくと、そこで離したらどこに挿入されるかを示すように、ほかのページが左右に分かれて隙間をあけます。この見せ方は、レイアウトのパネルで Vertical / Horizontal Gap スライダーを負の値にしてページを深く重ねすぎていないときにいちばんよく働きます。上の図に付いた動画で短い実演を見られます。</p>
+
+    <p><strong>ページの切り取り:</strong> ページをレイアウトの外へドラッグすると、譜面から切り取られます。同じことはメニューの Page リングの Cut セルでもできます。</p>
+
+    <div class="note">メモリの使用を抑えるため、Table レイアウトは現在のページ以外を低い解像度の複製で表示します。これらの複製は Table レイアウトを描く前にすべて作らなければならないので、譜面の大きさと複雑さによって数秒から数分かかることがあります。</div>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+<section id="chapter-6">
+    <h2><svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-right:0.3em"><use href="#gb-ink"/></svg>第6章: Ink リング</h2>
+
+    <p>譜面に注釈を書き込みます。</p>
+
+    <figure>
+        <img src="assets/inkcells.jpg" alt="Ink リングのメニューセル" class="cells" loading="lazy">
+        <figcaption>Ink リングのメニューセル</figcaption>
+    </figure>
+
+    <p>Ink リングのセルは、譜面のページに注釈のオブジェクト（五線、楽譜記号、テキストボックス、外部の画像、線の描画）を加えます。セルをタップして有効にし、譜面のページに触れると、描き始めたり、記号・画像・テキストボックスを挿入したり、このリングのそのほかの動作（切り取り、複写、貼り付け、グリッド、編集）を行えます。</p>
+
+    <div class="note">ふだん、譜面のページ上のジェスチャーはページ移動の指示として解釈されます。ただし Ink リングが選ばれていて、かつ有効なセルがあるときは、代わりにそのセルの動作が行われます。</div>
+
+    <div class="note">Ink リングのセルを有効にすると、もう一度タップするか、別の Ink リングのセルを有効にするまで有効なままです。使わないでいると 4 秒後に自動的に解除されます。これを防ぐには、セルを長押ししてロックします。外側の縁に丸が現れてロックを示します。もう一度長押しするか、別のセルを選ぶとロックが外れます。Ink リングのすべてのセルがロックに対応しています。</div>
+
+    <h3>ツールの概要</h3>
+
+    <p><strong>Pencil、Pen:</strong> 線を描くツールです。働きはまったく同じですが、それぞれのパネルで別々に設定（色、線の太さなど）できるので、2 種類の線をいつでもすぐに使い分けられます。</p>
+
+    <p><strong>Rastrum:</strong> 五線を描くツールです。もっと一般には、指定した本数の平行線を水平または垂直に描くツールです。そのため、中世・ルネサンスの譜表、リュートやギターのタブ譜、コードダイアグラムなどにも使えます。</p>
+
+    <p><strong>Text:</strong> 編集できる複数行のテキストボックスをページに加えます。</p>
+
+    <p><strong>Symbols:</strong> 楽譜記号を 1 つずつ加えます。Symbol セルのパネルから、同梱の Bravura 音楽フォントに含まれる数千もの記号を使えます。</p>
+
+    <p><strong>Cut、Copy、Paste:</strong> 注釈はそれぞれ独立したオブジェクトで、切り取り、複写、貼り付け、変形ができます。オブジェクトを切り取るか複写するには、Cut か Copy のセルをタップしてから、譜面のページ上の目当てのオブジェクトをタップします。そのうえで必要なら Paste セルをタップし、切り取り／複写したオブジェクトを置きたい場所で譜面のページをタップします。</p>
+
+    <p><strong>Undo:</strong> Ink リングの直前の操作を取り消します。取り消すには、Undo セルを有効にしてからページをタップすると、直前の操作の前の状態に戻ります。メモリを節約するため、取り消せるのは 1 ページにつき直近 10 回の操作だけです。</p>
+
+    <p><strong>Grid:</strong> 設定できる作図用のグリッドをページの上に表示します。</p>
+
+    <p><strong>Edit:</strong> 有効なあいだ、既存の注釈をタップすると選択でき、移動、回転、拡大縮小ができます。外へドラッグすると、注釈のオブジェクトを正確に移動・拡大縮小・回転させるボタンを備えたパネルが現れます。</p>
+
+    <h3 id="chapter-6-pen-pencil">6.1 Ink リング: Pen, Pencil<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-pen"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-pencil"/></svg></h3>
+
+    <p>譜面のページに描きます。</p>
+
+    <figure>
+        <img src="assets/inkpencilpen.jpg" alt="Pen と Pencil のパネル" loading="lazy">
+        <figcaption>Pen と Pencil のパネル</figcaption>
+    </figure>
+
+    <p>Pen と Pencil のツールは働きが同じです。別々に設定しておけば、2 つの異なる線の描き方をいつでもすぐに使えます。</p>
+
+    <p>パネルの色見本をタップすると、ブラウザ標準の色選択画面が開きます。</p>
+
+    <p>パネルの重なった円をタップすると、不透明度を調整するスライダーが現れます。</p>
+
+    <p>下部のボタンは線の描き方を変えます。</p>
+    <ul>
+        <li><strong>Free:</strong> 制約のない描画。</li>
+        <li><strong>L-R:</strong> 左から右への水平な直線に制限。</li>
+        <li><strong>T-B:</strong> 上から下への垂直な直線に制限。</li>
+        <li><strong>Slope:</strong> 角度の制限なく、2 点のあいだに直線を引きます</li>
+    </ul>
+
+    <p><strong>点を打つ:</strong> ページを素早くタップしても印は残りません。うっかり触れたときに、とくに細い線では気付かれないような点が付いてしまわないようにするためです。意図して点を 1 つ打つには、ページに触れて少し（0.25 秒ほど）そのまま止めてから離してください。どの描き方でも同じです。</p>
+
+    <h3 id="chapter-6-rastrum">6.2 Ink リング: Rastrum<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-rastrum"/></svg></h3>
+
+    <p>五線を描きます。</p>
+
+    <figure>
+        <img src="assets/inkrastrum.jpg" alt="Rastrum パネル" loading="lazy">
+        <figcaption>5 本の五線、小節線付きの譜表、ルネサンスのリュート譜、単旋聖歌の譜表、ギターとマンドリンのコード表を示した Rastrum パネル</figcaption>
+    </figure>
+
+    <p>このツールの名前は、ラテン語の「熊手」に由来します。写譜用紙に五線の平行線を引くための、先が何本かに分かれた筆記具のことです。Podium の Rastrum はその考えを広げて、最大 60 本の平行線を、必要なら小節線も付けて描けるようにしています。</p>
+
+    <p>使い方は、まずページに触れ、そのままドラッグして rastrum オブジェクトの長さを決めます。</p>
+
+    <p>スタイルを L-R か T-B にすると、水平または垂直に描けます。T-B はギター、ウクレレ、マンドリンなどフレットのある楽器のコード表を作るのに便利です。描いたあとの rastrum オブジェクトは、Edit ツールでいつでも回転できます。</p>
+
+    <p><strong>Staff Space:</strong> 楽譜の浄書では、譜表の線の間隔（1 本の線から次の線までの距離）が基準の単位になります。音符の玉、休符、音部記号、臨時記号といった楽譜の要素はすべてこの単位を基準に大きさが決まるので、譜表の実際の大きさに関わらず、記譜が一貫した比率で拡大縮小されます。たとえば標準的な音符の玉は、隣り合う 2 本の線のあいだをちょうど埋めるように作られています。パネルの staff space の設定は、譜表の線のあいだの距離をピクセルで決めます。この値を <a href="#chapter-6-symbols" class="chapter-link">Symbols ツール</a>の staff space の設定と合わせておけば、譜表と記号の大きさが互いに正しく釣り合います。</p>
+
+    <p><strong>Width:</strong> 譜表の線の太さを決めます。スライダーをいちばん左まで動かすと Auto になり、いまの Staff Space の値に対して Bravura フォントが推奨する既定の太さを使います。</p>
+
+    <p><strong>Barline Width:</strong> 小節線の太さを決めます。スライダーをいちばん左まで動かすと Auto になり、いまの Staff Space の値に対して Bravura フォントが推奨する既定の太さを使います。</p>
+
+    <div class="note">Rastrum ツールを <a href="#chapter-6-cut-copy-paste" class="chapter-link">Copy/Paste</a>、<a href="#chapter-6-grid" class="chapter-link">Grid</a>、<a href="#chapter-7-flatten" class="chapter-link">Flatten</a> と組み合わせると、かなり凝った写譜用紙を自分で作れます。</div>
+
+    <h3 id="chapter-6-text">6.3 Ink リング: Text<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-text"/></svg></h3>
+
+    <p>ページにテキストボックスを加えます。</p>
+
+    <figure>
+        <img src="assets/inktext.jpg" alt="Text パネル" loading="lazy">
+        <figcaption>Text パネル</figcaption>
+    </figure>
+
+    <p>Text パネルでは文字の性質を設定できます。</p>
+    <ul>
+        <li>複数行の文字の行間を設定します。</li>
+        <li>PDF 標準のフォントに加えて、Vercetti、Bravura、Patrick Hand のフォントから選べます。</li>
+    </ul>
+
+    <h3 id="chapter-6-symbols">6.4 Ink リング: Symbols<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-symbols"/></svg></h3>
+
+    <p>ページに楽譜記号を加えます。</p>
+
+    <figure>
+        <img src="assets/inksymbols.jpg" alt="Symbols パネル" loading="lazy">
+        <figcaption>Basic グループを表示した Symbols パネル</figcaption>
+    </figure>
+
+    <p>記号は SMuFL の参照実装フォントである <a href="https://github.com/steinbergmedia/bravura" target="_blank">Bravura フォント</a>から取られており、名前の付いたグループに整理された 3,000 近い楽譜記号を使えます。標準のグループとその中身はすべて <a href="https://www.w3.org/2021/03/smufl14/" target="_blank">SMuFL の仕様</a>に記されています。</p>
+
+    <p>ドロップダウンからグループを選び、格子状に並んだ記号をタップして選びます。格子は縦にスクロールし、一度に多くの記号を表示します。</p>
+
+    <h4>グループ</h4>
+
+    <p>SMuFL のグループすべてに加えて、一覧の先頭に選び出された 3 つのグループがあります。</p>
+
+    <ul>
+        <li><strong>Recent</strong> — よく使う記号で、作業に合わせて自動的に更新されます。
+            はじめは空です。何度も使う記号にすぐ届くので便利です。</li>
+        <li><strong>Basic</strong> — 音部記号、音符の玉、臨時記号、休符、強弱記号、アーティキュレーションにわたって、
+            よく使われる記号を選んで集めたものです。その記号がどの SMuFL グループに属するか分からないときの
+            出発点に向いています。</li>
+        <li><strong>Signatures</strong> — あらかじめ組まれた調号と拍子記号です。それぞれが置くだけで使える
+            1 つの記号になっています。調号はすべての長調と短調（たとえば嬰ハ長調を、シャープ 7 つではなく
+            1 つの記号として）を、拍子記号はよく使う拍子をすべて網羅します。臨時記号や数字の記号を
+            1 つずつ組み合わせるのではなく、こちらを使ってください。</li>
+    </ul>
+
+    <div class="note">Group のドロップダウンには 134 の項目があり、目当てのグループを探してスクロールするのは骨が折れます。どのグループにも直接跳べるように、物理キーボードか Podium の画面上の <a href="#chapter-9-keyboard" class="chapter-link">Keyboard</a>（More リング）で名前の頭の数文字を打ってください。打った文字に最初に一致したグループが自動的に選ばれます。</div>
+
+    <p><strong>Staff Space での大きさ指定:</strong> この設定は、その記号が前提とする譜表の線の間隔を指定して記号の大きさを決めます。この値を <a href="#chapter-6-rastrum" class="chapter-link">Rastrum ツール</a>の staff space の設定と合わせておけば、記号と譜表の大きさが互いに正しく釣り合います。</p>
+
+    <p>記号を置いたあとは、<a href="#chapter-6-edit" class="chapter-link">Edit ツール</a>で位置、大きさ、角度を細かく整えられます。</p>
+
+    <h3 id="chapter-6-cut-copy-paste">6.5 Ink リング: Cut, Copy, Paste<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-cut"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-copy"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-paste"/></svg></h3>
+
+    <p>注釈のオブジェクトを扱います。</p>
+
+    <p>注釈はそれぞれ独立したオブジェクトで、切り取り、複写、貼り付け、変形ができます。オブジェクトを切り取るか複写するには、Cut か Copy のセルをタップしてから、譜面のページ上の目当てのオブジェクトをタップします。オブジェクトはその譜面に結び付いた貼り付けバッファに入るので、注釈をページ間で移したり複写したりできます。</p>
+
+    <p>貼り付けバッファからオブジェクトを貼り付けるには、Paste セルをタップしてから、貼り付けたい譜面のページをタップします。</p>
+
+    <p>Copy セルには Open パネルが付いていて、保存先から外部の PNG または JPEG の画像を選べます。パネルを引き出して目当ての画像を選び、続いて Paste セルで、その画像を注釈のオブジェクトとして譜面のページに貼り付けます。</p>
+
+    <div class="note">譜面のページの PNG や JPEG（たとえばカメラで撮った写真）があるなら、PDF のページとして恒久的に取り込めます。Copy セルの Open パネルから画像を開き、Page リングの Add セルで白紙のページを足します。Ink リングの Paste セルでそのページに画像を貼り付け、必要に応じて Edit ツールで大きさと位置を整えます。最後に Page リングの Flatten で画像を PDF に焼き付ければ、画像が埋め込まれた新しい譜面のページができます。</div>
+
+    <p><strong>注釈を削除する:</strong> 注釈のオブジェクトを削除するには、Cut セルを有効にしてそのオブジェクトをタップします。そのあとどこにも貼り付けなければ、譜面から削除されたのと同じことになります。</p>
+
+    <h3 id="chapter-6-undo">6.6 Ink リング: Undo<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-undo"/></svg></h3>
+
+    <p>Ink リングの直前の操作を取り消します。</p>
+
+    <p>あるページの操作を取り消すには、Undo セルを有効にしてから、そのページをタップして直前の操作の前の状態に戻します。Podium はページごとに直近 10 回の操作を記録しています。</p>
+
+    <p>貼り付け、削除、変形も含め、Ink リングのどの操作も取り消せます。唯一の例外は Copy そのもので、これは取り消せません（そのあとの貼り付けは取り消せます）。</p>
+
+    <h3 id="chapter-6-grid">6.7 Ink リング: Grid<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-grid"/></svg></h3>
+
+    <p>寸法を測り、配置を決めるための平面のガイドグリッドを描きます。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/inkgrid.jpg" alt="Grid パネル" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: Grid ツールを使う" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="Grid ツールを使う（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/inkgrid.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>Grid パネルと、譜面に重ねたグリッド</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>Grid パネルはメートル法でもヤード・ポンド法（インチ）でも設定できます。</p>
+
+    <p>グリッドは平面です。X と Y の Step スライダーでグリッド線の間隔を変えられます。</p>
+
+    <p>グリッドを正確に置くには、まず Grid セルを有効にし、譜面のページに触れます。触れたまま離さないあいだ、グリッドの位置が指に付いてきます。これを使ってグリッドを譜面の既存の要素にそろえてください。置き直すには、まずページをタップしてグリッドを消し、次に長押ししてドラッグします。</p>
+
+    <p>Numbers を On にすると、グリッド線にラベルが付き、小さな丸で示された原点からの距離が表示されます。</p>
+
+    <p>グリッドそれ自体は注釈のオブジェクトではありません。ほかの Ink の操作を邪魔せず、譜面を保存したり印刷したりしても残りません。</p>
+
+    <p>グリッドは、ink の要素をそろえて正確に置くのに役立ちます。要素どうしや譜面の要素のあいだの距離を測るのにも使えます。グリッドを置くときに測り始めの位置を 0 点に合わせ、そこから長さを読み取ってください。グリッドの寸法は、拡大率やモニターの解像度に関わらず、その譜面を印刷したときの大きさについての Podium の推定を表します。</p>
+
+    <h3 id="chapter-6-edit">6.8 Ink リング: Edit<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-edit"/></svg></h3>
+
+    <p>注釈のオブジェクトを編集（移動、拡大縮小、回転）します。</p>
+
+    <figure>
+        <img src="assets/inktransform1.jpg" alt="変形のハンドル" loading="lazy">
+        <figcaption>選択したオブジェクトに付いた変形のハンドル</figcaption>
+    </figure>
+
+    <p>Edit セルを有効にした状態で、オブジェクトに触れるか、その周りを長方形で囲うと選択できます。</p>
+
+    <p>四角いハンドルを動かすと、オブジェクトの大きさや角度を変えられます。</p>
+    <ul>
+        <li><strong>上のハンドル:</strong> オブジェクトを回転します。</li>
+        <li><strong>角のハンドル:</strong> 縦横の比を保って拡大縮小します。</li>
+        <li><strong>辺の中央のハンドル:</strong> 縦横の比を変えて伸縮します。</li>
+        <li><strong>オブジェクトの内側をドラッグ:</strong> 移動します。</li>
+    </ul>
+
+    <p id="chapter-6-page-bounds"><strong>ページの内側に留まること:</strong> 注釈のオブジェクトは、そのページの枠の内側に保たれます。ページの端を越えてドラッグすることはできず、Edit パネルの矢印ボタンで動かすときも、テキストボックス、記号、貼り付けたオブジェクトを最初に置くときも同じ制限が働きます。端に寄りすぎた位置に置かれたものは、収まるように内側へ押し戻されます。複数のオブジェクトをまとめて選んでいるときは、その全体がページ内に保たれます。制限されるのは位置だけです。拡大縮小や回転によって一部が端を越えることはありえますし、ページより大きいオブジェクトは、その方向についてはページの中央に置かれます。</p>
+
+    <figure>
+        <img src="assets/inktransform2.jpg" alt="まとめての変形" loading="lazy">
+        <figcaption>まとめて変形するために複数のオブジェクトを選択した状態</figcaption>
+    </figure>
+
+    <p>複数のオブジェクトをドラッグでまとめて選び、ひとまとまりとして変形できます。錠のアイコンをタップすると、そのまとまりが 1 つのオブジェクトのように振る舞います。もう一度タップすると解除されます。</p>
+
+    <h4>Edit パネル</h4>
+
+    <p>Edit セルから外へドラッグすると Edit パネルが開きます。注釈のオブジェクトの位置、大きさ、角度を細かく調整する操作が並んでいます。タッチのハンドルでは大ざっぱすぎるときや、スタイラスで作業するときにとくに役立ちます。</p>
+    <div class="note"><strong>コツ:</strong> 直接つかんで動かす編集は、手早く簡単な作業にはよく合いますが、注釈が込み合ってくると Edit パネルが手放せなくなります。たくさん書き込むなら、ぜひ使ってみてください。</div>
+
+
+    <figure>
+        <img src="assets/inkedit.jpg" alt="切り離した Edit パネル。rastrum の注釈が対象になっている" loading="lazy">
+        <figcaption>切り離して表示した Edit パネル。rastrum の注釈が対象になっている</figcaption>
+    </figure>
+
+    <p>パネルの中央には、いま選ばれている<strong>対象のオブジェクト</strong>のアイコンが表示されます。対象を変えるには、目当ての注釈に触れるか操作するだけです。あるいは<strong>走る人の形</strong>のアイコンを使って、同じページ上の注釈を重なり順に 1 つずつたどれます。重なり順は操作の履歴で決まります。いちばん最近触れたり動かしたりしたものが手前に来ます。</p>
+
+    <p>Edit パネルが開いているとき、ページの何もない場所（注釈がないところ）をクリックすると、そのページでいちばん最近選んだ注釈が自動的に選ばれます。</p>
+
+    <ul>
+        <li><strong>矢印ボタン</strong> — 対象を左右上下に動かします。</li>
+        <li><strong>クレシェンドのボタン</strong> — 対象を大きくします。</li>
+        <li><strong>デクレシェンドのボタン</strong> — 対象を小さくします。</li>
+        <li><strong>回転のボタン</strong> — 対象を時計回り／反時計回りに回します。</li>
+        <li><strong>走る人のボタン</strong> — ページ上の次／前の注釈を対象にします。</li>
+        <li><strong>はさみのボタン</strong> — 対象の注釈を切り取り、貼り付けバッファに入れます。重なり順で次の注釈が自動的に新しい対象になります。</li>
+    </ul>
+
+    <p><strong>キーボードショートカット:</strong> 注釈を選んでいるとき、<kbd>Delete</kbd> または <kbd>Backspace</kbd> を押すと切り取られます。はさみのボタンをタップするのと同じです。</p>
+
+    <h3>注釈と作業の進め方のコツ</h3>
+
+    <p><strong>保存と持続:</strong> 注釈はすべて、ファイルを保存するときに譜面とともに自動的に保存されます。レイアウトを切り替えても注釈はそのまま保たれます。</p>
+
+    <p><strong>ページの制約:</strong> 注釈のオブジェクトは複数のページにまたがれず、<a href="#chapter-6-page-bounds" class="chapter-link">ページの外</a>に置いたり動かしたりもできませんが、Cut/Copy/Paste のツールでページ間に簡単に複写できます。</p>
+
+    <p><strong>速さについての注意:</strong> 注釈、とくにペンや鉛筆の線が多いフリーハンドの描画は、保存した譜面の大きさを大きく増やします。注釈が込み合ったページでは、<a href="#chapter-7" class="chapter-link">Page リング</a>の Flatten で注釈を PDF そのものに変換することを考えてみてください。動きが軽くなります。</p>
+
+    <p><strong>正確に作業するには:</strong> きちんとした記譜をするなら、Grid ツールと Rastrum を組み合わせて譜表を置き、そのうえで Symbols で記号を加えます。置いたあとの記号の位置は Edit ツールで細かく整えられます。</p>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+</section>
+
+<section id="chapter-7">
+    <h2><svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-right:0.3em"><use href="#gb-page"/></svg>第7章: Page リング</h2>
+
+    <p>譜面のページとページ番号を扱います。</p>
+
+    <figure>
+        <img src="assets/pagecells.jpg" alt="Page リングのメニューセル" class="cells" loading="lazy">
+        <figcaption>Page リングのメニューセル</figcaption>
+    </figure>
+
+    <div class="note">ふだん、譜面のページ上のジェスチャーはページ移動の指示として解釈されます。ただし Page リングが選ばれていて、かつ有効なセルがあるときは、代わりにそのセルの動作が行われます。</div>
+
+    <div class="note">Page リングのセルを有効にすると、もう一度タップするか、別の Page リングのセルを有効にするまで有効なままです。使わないでいると 4 秒後に自動的に解除されます。これを防ぐには、セルを長押ししてロックします。外側の縁に丸が現れてロックを示します。もう一度長押しするか、別のセルを選ぶとロックが外れます。Numbers を除く Page リングのすべてのセルがロックに対応しています。例外として、Numbers のセルは有効になることがありません。ページ番号とキーボードショートカットを設定するパネルを持っているだけです。</div>
+
+    <h3>Page リングのツール</h3>
+
+    <p><strong>Numbers:</strong> 外へドラッグすると、譜面のページ番号を表示して設定するパネルが現れます。</p>
+
+    <p><strong>Add:</strong> Add パネルの設定に従って、空のページを譜面に挿入します。</p>
+
+    <p><strong>Cut:</strong> ページを譜面から取り除き、同じ譜面の別の場所に貼り付けられるようローカルのクリップボードに保持します。</p>
+
+    <p><strong>Copy:</strong> いまの譜面の中で複製するために、ページをローカルのクリップボードに複写します。</p>
+
+    <p><strong>Paste:</strong> ローカルのクリップボードのページを、いまの譜面の新しい位置に挿入します。</p>
+
+    <p><strong>Undo:</strong> 直前のページ操作（切り取りまたは貼り付け）を取り消します。</p>
+
+    <p><strong>Export:</strong> ページを共有バッファに複写し、ほかの Podium のタブから使えるようにします。</p>
+
+    <p><strong>Import:</strong> 共有バッファのページを、いまの譜面に挿入します。</p>
+
+    <p><strong>Merge:</strong> PDF の譜面をまるごと、いまの譜面の選んだ位置に挿入します。</p>
+
+    <p><strong>Flatten:</strong> ページ上のすべての Ink オブジェクトをページそのものに統合し、注釈を PDF の恒久的な内容に変えます。</p>
+
+    <p><strong>Magnify:</strong> 外へドラッグすると、触れている位置の譜面を拡大して見せる虫めがねのパネルが現れます。</p>
+
+    <h3 id="chapter-7-numbers">7.1 Page リング: Numbers<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-numbers"/></svg></h3>
+
+    <p>ページ番号の付け方を設定し、レイアウトの余白に表示される現在のページ番号を確かめます。</p>
+
+    <figure>
+        <img src="assets/pagenumbers.jpg" alt="Numbers パネル" loading="lazy">
+        <figcaption>ページ番号の設定を表示した Numbers パネル</figcaption>
+    </figure>
+
+    <p>譜面のどのページにも 2 つの番号があります。並び順の位置（1 枚目、2 枚目、3 枚目…）と、表示されるページ番号です。Podium はレイアウトの余白に表示されるページ番号を示し、それを 2 つの設定で決めます。</p>
+
+    <p><strong>Roman pages:</strong> 譜面の先頭から何ページを小文字のローマ数字（i, ii, iii…）で番号付けするかです。扉、目次、前書きといった前付けによく使われます。</p>
+
+    <p><strong>First Page Number:</strong> ローマ数字でない最初のページに表示する番号です。これで元の譜面のページ番号に合わせられます。</p>
+
+    <p>図の例では、</p>
+    <ul>
+        <li>譜面は 5 ページあり、並び順の位置は 1〜5 です</li>
+        <li>Roman pages = 2 なので、位置 1〜2 は i, ii と表示されます</li>
+        <li>First Page Number = 143 なので、位置 3 は 143 と表示されます</li>
+        <li>位置 4〜5 は 144, 145 と続きます</li>
+        <li>結果は i, ii, 143, 144, 145 となります</li>
+    </ul>
+
+    <p>これは大きな作品から一部を抜き出して使うときに役立ちます。この例では、完成した作品から扉、目次、143〜145 ページを抜き出した、という想定です。この番号付けによって、元のページ番号による参照がそのまま通じます。</p>
+
+    <h4>フットペダルのキー</h4>
+
+    <p>これらの設定は、音楽家がよく使う Bluetooth のフットペダル式ページめくり装置のためのものです。フットペダルはキーの少ない特殊なキーボードにすぎないので、これらの指定は通常のキーボードでも同じように働きます。</p>
+
+    <p>上または右の矢印キーに 1 つ、左または下の矢印キーに 1 つ、動作を割り当てられます。上または右のキーを押したときに次のページへ移動するか、次のブックマークへ移動するかを、該当のボタンをタップして決めます。同じように、左または下のキーで前のページへ移動するか、前のブックマークへ移動するかも選べます。</p>
+
+    <div class="note">ふつうは譜面を前後にめくる使い方をします。ただし、ブックマークを前後にたどれることは、数ページにわたる繰り返しのある譜面を読むときにとくに助かります。繰り返す部分の始まりがあるページにブックマークを置き、右または上の矢印キーを Pages、左または下の矢印キーを Bookmarks に設定してください。繰り返しを弾き進めるあいだは右の矢印キー（またはそれに当たるフットペダル）で次のページへ進み、繰り返しの終わりに来たら左の矢印キーで繰り返しの先頭へ一息に戻ります。</div>
+
+    <h4>そのほかのキーボードショートカット</h4>
+
+    <p>上で設定する矢印キーの動作に加えて、次のショートカットはいつでも使えます。</p>
+    <ul>
+        <li><strong>Home:</strong> 最初のページへ跳ぶ</li>
+        <li><strong>End:</strong> 最後のページへ跳ぶ</li>
+        <li><strong>Ctrl+Home:</strong> 最初のブックマークへ跳ぶ</li>
+        <li><strong>Ctrl+End:</strong> 最後のブックマークへ跳ぶ</li>
+        <li><strong>Ctrl+矢印:</strong> 次／前のブックマークへ移動（上のフットペダルの矢印キーの設定に関わらず）</li>
+        <li><strong>PageUp / PageDown:</strong> 前／次のページへ移動</li>
+    </ul>
+
+    <h3 id="chapter-7-add">7.2 Page リング: Add<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-new-page"/></svg></h3>
+
+    <p>譜面に加える新しいページの見た目を設定します。</p>
+
+    <figure>
+        <img src="assets/pageadd.jpg" alt="Add パネル" loading="lazy">
+        <figcaption>Add パネルの設定</figcaption>
+    </figure>
+
+    <p>譜面に新しいページを加えるには、Add セルを有効にしてから、譜面のページをタップします。ページの左側をタップすると、タップしたページの前に新しいページが加わり、そうでなければ後ろに加わります（Vertical レイアウトのみ、譜面のページの中央より上をタップすると前、下をタップすると後ろになります）。</p>
+
+    <p>Add パネルで、加えるページの色と種類を設定します。</p>
+
+    <h4>加えるページの色と不透明度を設定する</h4>
+    <ul>
+        <li>Color のドロップダウンをタップすると、ブラウザ標準の色選択画面が開きます。</li>
+        <li>二重の円をタップすると、ページの不透明度を決めるスライダーが開きます。</li>
+    </ul>
+
+    <h4>加えるページの大きさを決める</h4>
+    <ul>
+        <li><strong>Match Score（既定）:</strong> 加えるページは、譜面の全ページのうちの最大の幅と高さになります。expand と center の違いは <a href="#chapter-4-details">Score リング: Details パネル</a>の説明をご覧ください。</li>
+        <li><strong>Standard Size:</strong> 標準の用紙サイズ（Letter、Legal、A4 など）から選びます。</li>
+        <li><strong>Custom Size:</strong> 加えるページの寸法を自由に指定します。</li>
+    </ul>
+
+    <h3 id="chapter-7-cut-copy-paste">7.3 Page リング: Cut, Copy, Paste<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-cut-page"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-copy-page"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-paste-page"/></svg></h3>
+
+    <p>いまの譜面の中でページを切り取り、複写し、貼り付けます。</p>
+
+    <p>この 3 つのセルは、いまのタブとセッションの中にだけ存在するローカルのクリップボードを扱います。共有バッファやほかの Podium のタブとはやり取りしません。</p>
+
+    <p><strong>Cut:</strong> Cut セルを有効にしてからページをタップします。そのページは譜面から取り除かれ、ローカルのクリップボードに入ります。</p>
+
+    <p><strong>Copy:</strong> Copy セルを有効にしてからページをタップします。そのページがローカルのクリップボードに入ります。元のページは譜面に残ります。</p>
+
+    <p><strong>Paste:</strong> Paste セルを有効にしてから、譜面のページをタップします。クリップボードのページが、タップしたページの前か後ろに挿入されます（左／上半分をタップすると前、右／下半分をタップすると後ろ）。貼り付けてもクリップボードはそのまま残るので、同じページを何度でも貼り付けられます。</p>
+
+    <p><strong>ページを削除する:</strong> ページを削除するには、Cut セルを有効にしてそのページをタップします。そのあとどこにも貼り付けなければ、譜面から削除されたのと同じことになります。<a href="#chapter-5-table" class="chapter-link">Table レイアウト</a>では、ページを表の外へドラッグして切り取ることもできます。</p>
+
+    <div class="note">Cut と Paste は Undo セルで取り消せます。Copy は取り消せません。</div>
+
+    <h3 id="chapter-7-undo">7.4 Page リング: Undo<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-undo"/></svg></h3>
+
+    <p>直前のページ操作を取り消します。</p>
+
+    <p>ページ操作（切り取りまたは貼り付け）を取り消すには、Undo セルを有効にします。直前の操作がすぐに巻き戻されます。Page リングは直近 10 回の操作の履歴を保っています。</p>
+
+    <div class="note"><strong>Import</strong> と <strong>Merge</strong> は、その譜面の取り消し履歴をすべて消します。そのため、これらの操作を行う前に確認を求められます。</div>
+
+    <div class="note">Ink リングのページごとの取り消しとは違い、Page リングの取り消しは譜面全体にわたるページ単位の操作を対象にします。</div>
+
+    <h3 id="chapter-7-export-import">7.5 Page リング: Export, Import<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-export-page"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-import-page"/></svg></h3>
+
+    <p>共有バッファを介して、Podium のタブ間でページをやり取りします。</p>
+
+    <figure>
+        <img src="assets/pageimport.jpg" alt="Import パネル" loading="lazy">
+        <figcaption>複数のページが入った共有バッファを表示した Import パネル</figcaption>
+    </figure>
+
+    <p>共有バッファには隠れた力があります。裏側では、書き出したページを書き出した順に集めた、別の PDF ファイルそのものなのです。</p>
+
+    <p><strong>Export:</strong> Export セルを有効にしてからページをタップします。そのページが共有バッファの末尾に加わります。元のページは譜面に残ります。</p>
+
+    <p><strong>Import:</strong> Import セルを有効にしてから、譜面のページをタップします。共有バッファのすべてのページがその位置に挿入されます。左半分（Vertical レイアウトでは上半分）をタップするとそのページの前、右半分（Vertical レイアウトでは下半分）をタップすると後ろです。</p>
+
+    <div class="note">取り込みの操作は譜面の取り消し履歴を消すので、実行する前に確認を求められます。</div>
+
+    <p>Import パネルには、共有バッファの縮小図を横にドラッグして見られる表示と、2 つの管理ボタンがあります。</p>
+
+    <ul>
+        <li><strong>Undo:</strong> いちばん最近書き出したページを共有バッファから取り除きます。いまの譜面には影響しません。</li>
+        <li><strong>Clear:</strong> 共有バッファを完全に空にし、すべてのページを一度に取り除きます。</li>
+    </ul>
+
+    <div class="note"><strong>インスタンスをまたぐ共有とプライバシー:</strong> 共有バッファは、同じブラウザのオリジンで動いている Podium のすべてのインスタンスで共有されます。つまり、すべてのブラウザのタブとインストールしたプログレッシブウェブアプリ（PWA）が 1 つのバッファを共有し、ブラウザ拡張は別のバッファを持ちます。この境界を越えて受け渡すことはできません。バッファは譜面を閉じてもブラウザを再起動しても残ります。<strong>ブラウザを他の人と共有している場合</strong>で、プライバシーが気になるなら、使い終わったあとに共有バッファを空にしてください。ウェブアプリと拡張の両方を使っているときは、それぞれのバッファを別々に空にする必要があります。</div>
+
+    <h4>主な使い道: 練習用の譜面</h4>
+
+    <p>いま練習しているすべての譜面からページを抜き出して 1 つにまとめ、自分だけの練習用の譜面を作れます。練習のたびに何本ものファイルを開いたり閉じたりする手間が減ります。</p>
+
+    <div class="note"><strong>速さについての注意:</strong> PDF のあいだでページを複写する処理は非常に重たいものです。PDF の形式がこの種の操作を想定して作られていないからです。共有バッファに一度に多くのページを詰め込むのは避けたほうがよく、さもないと動きがとても鈍くなります。</div>
+
+    <h3 id="chapter-7-merge">7.6 Page リング: Merge<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-merge"/></svg></h3>
+
+    <p>PDF の譜面をまるごと、いまの譜面の選んだ位置に取り込みます。</p>
+
+    <p>Merge セルをタップするとファイルのパネルが開くので、好きな PDF を選びます。セルが有効になり、ファイルが読み込まれて準備できたことを知らせる短い通知が出ます。いまの譜面のページをタップすると、選んだ PDF がそのページの前に挿入されます。取り込みは元のファイルのページ順を保ち、その中に保存された Ink の注釈も引き継ぎます。</p>
+
+    <div class="note">取り込みの操作は譜面の取り消し履歴を消すので、実行する前に確認を求められます。</div>
+
+
+    <p>一度取り込んだあともセルは有効なままなので、読み込み直さずに別のページをタップして、同じ元の PDF を複数の位置に挿入できます。セルは数秒後に自動的に解除され、もう一度タップすればすぐに解除されます。</p>
+
+    <h4>繰り返し使うためのロック</h4>
+
+    <p>Merge セルを長押しするとロックされます。ロックされたセルはずっと有効なままなので、同じファイルを多くのページに取り込みたいとき、時間切れを気にせず作業できます。もう一度長押しするか、セルをタップするとロックが外れ、読み込んだファイルも解放されます。</p>
+
+    <h4>よくある使い道</h4>
+
+    <p><strong>楽章をつなげる:</strong> 作品の第 1 楽章を開き、Merge で続く楽章を次々に末尾へ加えていけば、全楽章そろった譜面を 1 つのファイルとして組み上げられます。</p>
+
+    <p><strong>別の譜面からページを挿入する:</strong> 新しい内容を入れたい位置の<em>次の</em>ページをタップすると、元の PDF がそのページの前に挿入されます。置き場所を正確に決められます。</p>
+
+    <p><strong>扉や付録を足す:</strong> 表紙や補足の資料を元の PDF として読み込み、譜面の最初または最後のページをタップすれば、どちらの端にも入れられます。</p>
+
+    <h3 id="chapter-7-flatten">7.7 Page リング: Flatten<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-flatten"/></svg></h3>
+
+    <p>譜面のページの Ink の注釈を PDF に焼き付けます。</p>
+
+    <p>Podium では、各ページが重なった 2 つの層からできています。</p>
+    <ul>
+        <li>譜面の PDF の内容を表示する背景の層［オープンソースの Mozilla PDF ライブラリによります］。</li>
+        <li>譜面に加えた、編集できる Ink オブジェクトを表示する注釈の層［オープンソースの Fabric.js ライブラリによります］。</li>
+    </ul>
+
+    <p>Flatten セルを有効にしてページをタップすると、そのページの注釈の層が背景の層に焼き付けられます。この操作は、そのページのすべての Ink の注釈オブジェクトを PDF のオブジェクトに変換し、背景の PDF の層に取り込みます［オープンソースの pdf-lib ライブラリによります］。そのあとは、これらのオブジェクトを選んだり編集したりはできません。譜面の背景の PDF と一体になったのです。</p>
+
+    <h4>よくある使い道</h4>
+
+    <p><strong>スマートフォンの写真を譜面に入れる:</strong> 譜面のページをスマートフォンで撮ったなら、それを PDF の恒久的なページとして取り込めます。手順の全体は <a href="#chapter-6-cut-copy-paste" class="chapter-link">Ink リング: Cut, Copy, Paste</a> の節をご覧ください。Flatten は、画像を PDF に焼き付ける最後の一手です。</p>
+
+    <p><strong>誤って編集してしまうのを防ぐ:</strong> Ink リングの Rastrum ツールでページに譜表を描き、そのうえに Pencil と Pen で描き込みたいとします。先に譜表を背景の層へ焼き付けておけば、描き込みがずっと編集しやすくなります。譜表そのものをうっかり選んで動かしてしまうことなく作業できるからです。</p>
+
+    <p><strong>写譜用紙を作る:</strong> Ink の注釈でページの体裁を設計し、それを焼き付けて恒久的にすれば、自分用の写譜用紙を作れます。<a href="#chapter-6-rastrum">Rastrum ツール</a>で譜表を描き、必要なら <a href="#chapter-6-symbols">Symbols</a> で音部記号を加え、<a href="#chapter-6-grid">Grid</a> できちんとそろえます。すべての位置が決まったら、これらの注釈を焼き付けてページと一体にします。あとはこのページを複写して自分用の写譜用紙を何ページも作ったり、作曲のひな型として使ったりできます。</p>
+
+    <div class="note">焼き付けの操作は取り消せないので、実行する前に確認を求められます。</div>
+
+    <h3 id="chapter-7-magnify">7.8 Page リング: Magnify<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-magnify"/></svg></h3>
+
+    <p>ページの一部を拡大します。</p>
+
+    <p>Magnify セルから外へドラッグすると、いま触れている位置のページを拡大して表示するパネルが現れます。譜面のページに触れると、虫めがねのパネルがその場で更新され、触れた場所の PDF の内容と注釈の両方を見せます。</p>
+    <div class="note">Table レイアウトで拡大できるのは<a href="#chapter-5-table-current-page" class="chapter-link">現在のページ</a>だけで、縮小図は拡大できません。</div>
+    <div class="note"><strong>コツ:</strong> Magnify ツールは、カメラにつないだモニターのようなものだと考えてください。虫めがねのパネルがモニターで、指やスタイラスがカメラです。Magnify セルを有効にするとカメラが入ります。そのまま譜面のページの上で指を動かせば、指のまわりの範囲がモニターに随時映ります（ページをまたぐには、いったん指を離してから触れ直してください）。セルを解除するとカメラが切れ、最後に写った像は、ツールをまた有効にしてページに触れるまでパネルに残ります。</div>
+
+
+    <p>パネルの <strong>Zoom:</strong> スライダーは、拡大率を 0.25 倍から 5 倍のあいだで調整します。</p>
+
+    <figure>
+        <img src="assets/pagemagnify.jpg" alt="Magnify パネル" loading="lazy">
+        <figcaption>触れている位置の譜面を拡大して表示した Magnify パネル（ダークテーマ）</figcaption>
+    </figure>
+
+    <div class="note">Magnify ツールは注釈を書き込むときにとくに役立ちます。たとえば譜面に装飾音を置くときや、ペンや鉛筆でフリーハンドに描くとき、指先のまわりを拡大して確かめられます。</div>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/pagemagnifymordent.jpg" alt="Magnify を Ink リングのツールと組み合わせて正確に書き込む" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: 虫めがねを使って書き込む" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="虫めがねを使って書き込む（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/pagemagnifymordent.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>Magnify ツールを Ink リングの注釈のツールと組み合わせて、より正確に書き込む</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+<section id="chapter-8">
+    <h2><svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-right:0.3em"><use href="#gb-podium"/></svg>第8章: App リング</h2>
+
+    <p>アプリの情報と表示の設定です。</p>
+
+    <figure>
+        <img src="assets/appcells.jpg" alt="App リングのメニューセル" class="cells" loading="lazy">
+        <figcaption>App リングのメニューセル</figcaption>
+    </figure>
+
+    <h3>App リングのセル</h3>
+
+    <p><strong>About:</strong> アプリのバージョン、リリースノート、謝辞、ライセンスの情報。</p>
+
+    <p><strong>Theme:</strong> Light、Glass、Dark の表示テーマを順に切り替えます。</p>
+
+    <p><strong>Guide:</strong> このガイドブックを開きます。</p>
+
+    <p><strong>Storage:</strong> Podium がブラウザに保存しているデータを扱います。</p>
+
+    <p><strong>Curtain:</strong> 画面を暗くします。暗い場所での本番で役立ちます。</p>
+
+    <p><strong>Wakelock:</strong> 本番中に画面が自動的に暗くなるのを防ぎます。</p>
+
+    <p><strong>Screen:</strong> 全画面表示を切り替えます。</p>
+
+    <h3 id="chapter-8-about">8.1 App リング: About<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-about"/></svg></h3>
+
+    <p>アプリの情報を示すタブ付きのパネルです。</p>
+
+    <figure>
+        <img src="assets/appabout.jpg" alt="About パネルの Version タブ" loading="lazy">
+        <figcaption>Version タブを表示した About パネル</figcaption>
+    </figure>
+
+    <h4>About タブ</h4>
+    <p>アプリのバージョン番号と、次のリンクを示します。</p>
+    <ul>
+        <li><strong><a href="https://studiop5.org/releaseNotes.html" target="_blank">Release Notes:</a></strong> Podium のウェブサイト上のバージョン履歴</li>
+        <li><strong><a href="https://studiop5.org/privacy.html" target="_blank">Privacy:</a></strong> プライバシーポリシー</li>
+        <li><strong><a href="https://studiop5.org/terms.html" target="_blank">Terms:</a></strong> 利用規約</li>
+        <li><strong><a href="https://github.com/studiop5/podium" target="_blank">Source:</a></strong> GitHub のソースコードリポジトリ</li>
+        <li><strong><a href="https://github.com/studiop5/podium/issues" target="_blank">Issues:</a></strong> 不具合の報告と機能の要望</li>
+    </ul>
+
+    <h4>Credits タブ</h4>
+    <p>Podium が土台にしているオープンソースのプロジェクトを挙げています。</p>
+
+    <h4>License タブ</h4>
+    <p>著作権とライセンスの正式な表示（<a href="https://www.gnu.org/licenses/agpl-3.0-standalone.html" target="_blank">GNU Affero General Public License v3</a>）。</p>
+
+    <h3 id="chapter-8-theme">8.2 App リング: Theme<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-light"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-glass"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-dark"/></svg></h3>
+
+    <p>3 つの表示テーマを順に切り替えます。いまのテーマは保存され、次に使うときも残ります。</p>
+
+    <ul>
+        <li><strong>Light</strong> — 白い背景に暗い内容。明るい場所に向きます。</li>
+        <li><strong>Glass</strong> — さまざまな明るさのもとで目の疲れを抑えるための、中間の色合いのテーマ。</li>
+        <li><strong>Dark</strong> — 暗い背景に明るい内容。暗い場所に最適です。</li>
+    </ul>
+
+    <h3 id="chapter-8-guide">8.3 App リング: Guide<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-guide"/></svg></h3>
+
+    <p>このガイドブックをアプリの中で開きます。ガイドブックはウェブから取得するので、インターネット接続が必要です。ブラウザ拡張では、ガイドブックは新しいタブで開きます。オフラインで読むために保存したいときは、別のウィンドウで開き、ブラウザの「ページを保存」機能（ふつうは Ctrl+S または Cmd+S）で画像と動画ごとダウンロードしてください。</p>
+
+    <h3 id="chapter-8-storage">8.4 App リング: Storage<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-storage"/></svg></h3>
+
+    <p>Podium がブラウザに保存しているデータを扱います。</p>
+
+    <figure>
+        <img src="assets/appstorage.jpg" alt="Storage パネル" loading="lazy">
+        <figcaption>Storage パネル</figcaption>
+    </figure>
+
+    <p>Storage パネルには、Podium がブラウザに保存しているデータを扱うボタンがあります。</p>
+
+    <ul>
+        <li><strong>Menu:</strong> メニューの多くの設定の保存値を消します。これをタップするとメニューが既定の状態に戻り、すべてのレイアウト（いま開いているレイアウトの拡大率、位置、設定も含みます）が工場出荷時の既定に戻ります。</li>
+        <li><strong>Recent:</strong> Open、Save、Copy のパネルに表示される、最近開いたものの一覧を消します。</li>
+        <li><strong>Buffer:</strong> 共有バッファの中身を消します（詳しくは <a href="#chapter-7-export-import">Page リング: Export, Import</a> をご覧ください）。</li>
+        <li><strong>Reload:</strong> Podium を強制的に読み直します（キャッシュを消しての再起動）。保存していない変更をうっかり失わないよう、確認のダイアログを経てから行われます。</li>
+    </ul>
+
+    <p>使える環境では、開発者に役立つ保存容量の統計も、更新できる形で表示されます。</p>
+
+    <div class="note"><strong>プライバシー:</strong> ブラウザを他の人と共有しているなら、使い終わったあとに、共有したくない情報を初期化のボタンで消してください。最近開いたファイルの一覧、共有バッファの中身、メニューの設定が対象です。ウェブアプリとブラウザ拡張は別々の保存領域を持つので、両方を使っているなら、それぞれの環境でこれらのボタンを使う必要があります。</div>
+
+    <h3 id="chapter-8-curtain">8.5 App リング: Curtain<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-curtain"/></svg></h3>
+
+    <p>譜面の上に半透明のカーテンを掛けます。Curtain セルをタップするとカーテンの入り切りが切り替わります。外へドラッグすると Curtain パネルが現れ、カーテンの色と不透明度を選べます。</p>
+
+    <p>色は 2 つあり、それぞれ違う本番の状況に向いています。</p>
+    <ul>
+        <li><strong>Black</strong> — 画面を暗くし、ディスプレイが周りに投げる光の量を減らします。明るい画面が目障りな明かりになってしまう、暗い劇場での演奏に役立ちます。</li>
+        <li><strong>Red</strong> — オーケストラピット、薄暗い舞台裏、袖など、暗さに慣れた目を保ちたい場所での演奏のためのものです。暗い赤い光は、白い光のように目の桿体を白けさせないので、赤いカーテンのもとで譜面を読めば、暗順応した視力をそのままに保ったまま、譜面と周りの暗がりのあいだで目を往復させても目が慣れ直す必要がありません。舞台や指揮者が明るく照らされている場合は、目がその明るさに合わせてしまうので、この利点はほとんど失われます。（注: 譜面に赤で書き込んだ注釈や印は背景に溶け込み、赤いカーテンのもとでは見えなくなることがあります。）</li>
+    </ul>
+
+    <figure>
+        <img src="assets/appcurtain.jpg" alt="Curtain パネル" loading="lazy">
+        <figcaption>色と不透明度の操作を備えた Curtain パネル</figcaption>
+    </figure>
+
+    <h3 id="chapter-8-wakelock">8.6 App リング: Wakelock<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-wakelock"/></svg></h3>
+
+    <p>本番中に画面が自動的に暗くなったりロックされたりするのを防ぎます。Wakelock が働いているあいだ、Podium が前面にある限り端末の画面は点いたままです。Wakelock セルをタップすると入り切りが切り替わります。</p>
+
+    <figure>
+        <img src="assets/appwakelock.jpg" alt="Wakelock セルの拡大" loading="lazy">
+        <figcaption>Wakelock セルの拡大。Wakelock が入っているとろうそくに火が灯って見えます。</figcaption>
+    </figure>
+
+    <div class="note">Wakelock はブラウザの対応が必要で、すべてのプラットフォームで使えるとは限りません。（iPad と iPhone では Safari 16.4 以降で使えます。）</div>
+
+    <h3 id="chapter-8-screen">8.7 App リング: Screen<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-full-screen"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-normal-screen"/></svg></h3>
+
+    <p>全画面表示を切り替えます。背景を下へスワイプしても切り替えられます。iPhone / iPad では、スワイプは全画面を抜けることしかできません。全画面にするにはこのボタンを使ってください。</p>
+
+    <p>Screen セルから外へドラッグすると <strong>Screen パネル</strong>が開きます。Podium のもの（メニュー、譜面、開いているパネル）を正確に動かし、大きさを変える操作が並んでいます。ピンチズームでは大ざっぱすぎて位置が決まらないときや、スタイラスで作業するときにとくに役立ちます。</p>
+
+    <figure>
+        <img src="assets/appscreen.jpg" alt="Screen パネル" loading="lazy">
+        <figcaption>切り離して表示した Screen パネル。中央のアイコンがいまの対象を示します。</figcaption>
+    </figure>
+
+    <p>パネルの中央には、いま選ばれている<strong>対象のオブジェクト</strong>のアイコン、つまりパネルの操作が効く相手が表示されます。中央が空のときは背景が対象で、背景の上のすべてのものがまとめて動きます。</p>
+
+    <ul>
+        <li><strong>矢印ボタン</strong> — 対象を左右上下に動かします。</li>
+        <li><strong>クレシェンドのボタン</strong> — 対象を大きくします。</li>
+        <li><strong>デクレシェンドのボタン</strong> — 対象を小さくします。</li>
+    </ul>
+
+    <p>対象を変えるには、目当てのものに触れるか操作するだけです。あるいはパネルの<strong>走る人の形</strong>のアイコンで、Podium のものを重なり順に 1 つずつたどれます。重なり順は操作の履歴で決まります。いちばん最近触れたり動かしたりしたものが手前に来ます。</p>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+<section id="chapter-9">
+    <h2><svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-right:0.3em"><use href="#gb-more"/></svg>第9章: More リング</h2>
+
+    <p>音楽家の道具箱です。</p>
+
+    <figure>
+        <img src="assets/morecells.jpg" alt="More リングのメニューセル" class="cells" loading="lazy">
+        <figcaption>More リングのメニューセル</figcaption>
+    </figure>
+
+    <h3>More リングのツール</h3>
+
+    <p><strong>Metronome:</strong> 指揮の図形を模したアニメーション付きメトロノーム。</p>
+
+    <p><strong>Stopwatch:</strong> 練習の記録を取るための、スプリット付き練習用タイマー。</p>
+
+    <p><strong>Clock:</strong> 現在の時刻と日付を示す壁掛け時計。</p>
+
+    <p><strong>Piano:</strong> 調律と音高検出の機能を備えた、実際に鳴らせるピアノ鍵盤。</p>
+
+    <p><strong>Review:</strong> 波形・スペクトログラムの表示とその場での再生を備えた音声・動画の録画。</p>
+
+    <p><strong>Volume:</strong> すべての音の再生に効く音量のスライダー。</p>
+
+    <p><strong>Keyboard:</strong> 文字の入力と、ファイルのパネルやドロップダウンでの逐次検索のための画面上のキーボード。</p>
+
+    <div class="note">More リングのセルはどれもパネルを出すためだけにあるので、ドラッグの代わりに触れるだけで、パネルが自動的に開き、アイコンの近くの取りやすい位置に置かれます。</div>
+
+    <h3 id="chapter-9-detached">9.1 More リング: パネルの切り離し</h3>
+
+    <p>パネルの中身を切り離して、画面を整えます。</p>
+
+    <figure>
+        <img src="assets/moredetach.jpg" alt="切り離したパネル" loading="lazy">
+        <figcaption>背景の上に切り離したパネル</figcaption>
+    </figure>
+
+    <p>Metronome、Stopwatch、Clock、Volume、Keyboard のパネルの図の部分は、背景へドラッグしてパネルから切り離せます。</p>
+
+    <p>切り離したパネルは、ドラッグして置き直せます。</p>
+
+    <p>切り離したパネルを隠すには、フリングするだけです。</p>
+
+    <p>切り離したパネルを閉じて消すには、メニューからもう一度そのパネルを引き出し、パネルの X ボタンをタップします。</p>
+
+    <h3 id="chapter-9-metronome">9.2 More リング: Metronome<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-metronome"/></svg></h3>
+
+    <p>指揮を模したアニメーション付きメトロノームです。</p>
+
+    <figure>
+        <img src="assets/moremetronome.jpg" alt="Metronome パネル" loading="lazy">
+        <figcaption>指揮の図形を表示した Metronome パネル</figcaption>
+    </figure>
+
+    <p>ドロップダウンで、昔ながらのメトロノームの絵から、6 種類の拍子の指揮の図形に変えられます。</p>
+
+    <figure>
+        <img src="assets/moremetronomeopts.jpg" alt="Metronome のドロップダウンの選択肢" loading="lazy">
+        <figcaption>Metronome の表示の選択肢と、切り離したパネル</figcaption>
+    </figure>
+
+    <p>ボタンでメトロノームを鳴らしたり止めたりし、スライダーで 1 分あたりの拍数を決めます。<strong>Mute</strong> ボタンは、Piano や Review の再生に影響せずにメトロノームの音だけを消します。（<a href="#chapter-9-volume" class="chapter-link">Volume パネル</a>で音量を 0 にしても同じことはできますが、それではすべての音が消えてしまいます。Mute ボタンはメトロノームだけを消します。）</p>
+
+    <p><strong>Latency</strong> スライダーは、聞こえる刻みの音と、振り子や指揮者の手が拍点に達する瞬間（打点）とのタイミングの関係を調整します。音と目に見える拍がずれて感じるときに使ってください。Bluetooth のヘッドホンで聞くときにとくに役立ちます。Bluetooth には避けられない音の遅れがあり、刻みの音がアニメーションより遅れて聞こえてしまうからです。</p>
+
+    <p><strong>Hide/Show</strong> の切り替えは、指揮の図形の軌跡を描くかどうかを決めます。隠すと、指揮の手はいつもどおり動きますが線は描かれません。目に見える拍の合図は欲しいけれど軌跡が気になる、というときに役立ちます。</p>
+
+    <p>メトロノームを切り離すと、テンポが図形そのものに表示されます。上の図では、左の図形は 60 bpm で、止まっていることを示すフェルマータの記号が出ており、右の図形は 167 bpm で動いています。</p>
+
+    <p>切り離しているあいだは、長押しで鳴らす／止めるを切り替えられます。テンポは、図形を好きな速さでタップすれば変えられます。</p>
+
+    <div class="note">パネルをフリングして隠した場合（切り離していてもいなくても）、メトロノームは裏で鳴り続けます。止めて閉じるには X ボタンをタップしてください。これでパネルは消えます。次に Metronome セルを引き出すと、パネルは最初から作り直されます。</div>
+
+    <div class="note">指揮の図形は試験的なものです。アニメーションが複雑なため、とくに動作の遅い端末や速いテンポでは、図形とアニメーションのあいだに多少のずれが出ると思ってください。</div>
+
+    <h3 id="chapter-9-stopwatch">9.3 More リング: Stopwatch<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-stopwatch"/></svg></h3>
+
+    <p>練習の時間を計ります。</p>
+
+    <figure>
+        <img src="assets/morestopwatch.jpg" alt="Stopwatch パネル" loading="lazy">
+        <figcaption>操作とスプリットタイムを表示した Stopwatch パネル</figcaption>
+    </figure>
+
+    <p>ストップウォッチはスプリットタイムを、新しいものから順に表示します。一覧がパネルからあふれるときは、右下の角をドラッグしてパネルの大きさを変えてください。</p>
+
+    <p>ストップウォッチは切り離しても完全に使えます。中央のボタンに触れると開始／停止、左のボタンでリセット、右のボタンでスプリットの記録です。スプリットタイムを見るにはパネル全体が必要なので、メニューのセルからもう一度引き出してください。</p>
+
+    <div class="note">パネルをフリングして隠した場合（切り離していてもいなくても）、ストップウォッチは裏で動き続けます。止めて閉じるには X ボタンをタップしてください。これでパネルは消えます。次に Stopwatch セルを引き出すと、パネルは最初から作り直されます。</div>
+
+    <h3 id="chapter-9-clock">9.4 More リング: Clock<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-clock"/></svg></h3>
+
+    <p>端末の既定のタイムゾーンで、現在の時刻と日付を示す壁掛け時計です。Podium を離れずに練習中の時間を把握できます。</p>
+
+    <p>時計は切り離して画面の好きな場所に置けます。</p>
+
+    <h3 id="chapter-9-piano">9.5 More リング: Piano<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-piano"/></svg></h3>
+
+    <p>調律と音高検出の機能を備えた、実際に鳴らせるピアノ鍵盤です。</p>
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/morepiano.jpg" alt="Piano パネル" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: Piano を使う" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="Piano を使う（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/morepiano.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>操作部を備えたピアノ鍵盤</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <p>|=|（<i>ブレーヴェ</i>）のボタンから左右にドラッグすると、鍵盤の幅を狭めたり広げたりできます。</p>
+    <p>8va（<i>オッターヴァ</i>）のボタンから左右にドラッグすると、鍵盤の中で見えている鍵の範囲が動きます。</p>
+
+    <div class="note">ピアノの音の標本は、Podium のダウンロードの大きさのかなりの部分を占めます。そのため鍵盤の最大は 5 オクターブに限ってあります。18 世紀のチェンバロやフォルテピアノによくある大きさです。標本は切り詰め、標本化の間隔も粗くして、（願わくは）許せる音質を保ちつつ大きさを抑えています。</div>
+
+    <p>鍵の上を指で滑らせればグリッサンドが弾けます。複数の指を使えば、和音や音程も含めて同時に鳴らせます（Settings: Timbre で決めた同時発音数の上限まで。下記参照）。Podium は弾ける限りの同時発音に対応しますが、実際のタッチ画面はたいてい 5 点までしか認識しません。</p>
+
+    <p><strong>Sustain モード:</strong> ピアノのペダルの標準的な記号で示されます。このモードでは、鍵を離したあとも音が鳴り続けます。ただしピアノの音は最大で 2 秒とすこししか続きません。Podium は本格的な音楽制作の道具ではありません。</p>
+
+    <p><strong>Autorepeat モード:</strong> Autorepeat モードのボタンをタップすると切り替わります。有効にすると、鍵を押すとそれが一定の間隔で自動的に繰り返されます（ピアノの標本では 2.5 秒、音叉の音色では 5 秒。下記の Settings: Timbre を参照）。音が続いて聞こえるので調律しやすくなります。</p>
+
+    <div class="note">「うなり」を使った昔ながらの調律をするなら、Autorepeat モードを Tuning Fork の音色で使ってください。電子的な調律の助けが欲しいなら、下記の Pitch Detector を使ってください。</div>
+
+    <p><strong>Pitch Detector:</strong> 音叉のアイコンで示されます。Pitch Detector のボタンをタップすると音高検出の入り切りが切り替わります。入れると、<a href="https://asa.scitation.org/doi/10.1121/1.1458024">YIN による音高検出</a>がマイクから聞こえた音にいちばん近いピアノの音を推定します。該当する鍵の上に全音符を重ねて表示し、あわせて、その鍵の想定される音高からのずれをセントで示します。全音符の濃さはアルゴリズムの確信度を表し、確信が下がるほど薄くなります。想定される音高は Settings の Pitch の設定（下記）に従いますが、Temperament の設定には影響されません。つまり、Temperament の設定に関わらず平均律からのずれです。</p>
+
+    <div class="note">音高検出は単音用です。一度に 1 音のときにいちばんうまく働きます。マイクに複数の音高や、話し声や雑音のような音高のない音が入ると、結果は当てになりません。音高検出を入れたまま Piano を弾くと、音がゆがんだり検出が不正確になったりすることがあります。</div>
+
+    <div class="note">マイクがないとき、Pitch Detector のボタンは無効（灰色）になり、マイクがつながった瞬間に自動的に使えるようになります。マイクはあるのに使えないとき（たとえばブラウザがマイクへのアクセスを拒否されているとき）は、ボタンをタップすると理由を説明する短いメッセージが出ます。</div>
+
+    <div class="note"><strong>iPhone / iPad:</strong> これらの端末の音声の仕組みの制約により、音高検出を切ったあともマイクの使用中の表示が残ります。これは想定どおりの動作です。ピアノとメトロノームの音が途切れないよう、マイクを裏で開いたままにしているのです。Piano パネルを閉じると、マイクは完全に解放されます。</div>
+
+    <figure>
+        <img src="assets/morepianodetect.jpg" alt="Piano の音高検出" loading="lazy">
+        <figcaption>検出した音とセント単位のずれを表示した音高検出</figcaption>
+    </figure>
+
+    <p><strong>Settings:</strong> Settings ボタンをタップすると設定のパネルが開閉します。開いたあとはフリングして閉じられます。この内側のパネルはつねに鍵盤に囲まれています。水平にドラッグして置き直せます。タブは 3 つあります。</p>
+
+    <ul>
+        <li><strong>Pitch:</strong> A4 の周波数を Hz で指定して、鍵盤全体の高さを調整します。よく使われるいくつかの値があらかじめ用意されており、説明へのウェブのリンクも付いています。</li>
+        <li><strong>Temperament:</strong> 既定の平均律に加えて、いくつかの歴史的な音律にピアノを調律し直せます。</li>
+        <li><strong>Timbre:</strong> 同梱の <a href="https://github.com/sfzinstruments/SalamanderGrandPiano">Salamander Grand Piano の標本</a>を使うか、調律用に合成した正弦波（実質的に音叉）を使うかを指定します。同時に鳴らせる音（声部）の最大数を決めるスライダー（最大 16）もあります。</li>
+    </ul>
+
+    <figure>
+        <img src="assets/morepianooptions.jpg" alt="Piano の設定パネル" loading="lazy">
+        <figcaption>Pitch、Temperament、Timbre のタブを表示した Piano の設定</figcaption>
+    </figure>
+
+    <div class="note">調律と音高検出のツールは参考のために用意されたもので、専門的な楽器の調律には向かないことがあります。</div>
+
+    <div class="note">ほとんどの選択肢には説明のウェブ記事へのリンクが付いています。選択肢を選ぶには、リンクではなく選択肢の名前そのものをタップしてください。</div>
+
+    <h3 id="chapter-9-review">9.6 More リング: Review<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-review"/></svg></h3>
+
+    <p>音声・動画を録り、その場で再生します。</p>
+
+    <div class="note">このツールを初めて使うとき、ブラウザがカメラとマイクの許可を求めます。使えるカメラとマイクが見つからない場合、このツールは動きません。</div>
+
+    <p>端末のカメラとマイクを映しながら、直前の約 30 秒（設定できます）をその場で再生します。</p>
+
+    <div class="note">このツールはその場で使うためだけに作られています。録ったものは意図的に一時的なもので、ツールを閉じると捨てられます。</div>
+
+    <p>Review パネルには 3 つのタブがあります。</p>
+
+    <h4>Video タブ</h4>
+    <p>カメラの生の映像を、再生の操作とともに表示します。</p>
+
+    <figure>
+        <img src="assets/morereviewvideo.jpg" alt="Review の Video タブ" loading="lazy">
+        <figcaption>カメラの生の映像と再生の操作を表示した Review パネルの Video タブ</figcaption>
+    </figure>
+
+    <p>Review のツールは、練習やリハーサルのあいだずっとあなたを録り続けます。しくじったとき（あるいはうまくいったとき）、その瞬間をすぐに見直して検討できます。</p>
+
+    <p>メモリが尽きる心配をせずに、何時間でも Review を動かしておけます。裏側では Podium がメモリを自動的に管理し、直近の部分（ふつうは 30 秒から数分）だけを再生できる形で残します。そのため、端末の資源を使い切ることなく、いつでも直近の演奏を見直せます。</p>
+
+    <div class="note">これはメモリの消費を防ぎますが、電池はかなり使うので、電池で動かすよりも電源につないでおくのがよいです。</div>
+
+    <p>このツールはいつでも 2 つのモードのどちらかにあります。</p>
+
+    <p><strong>Live モード:</strong> 音声と映像を続けて録り、Play ボタンには「Live」と表示されます。上に述べたとおり、録音があらかじめ決めた最大に達すると、録り続けながら古い部分が自動的に捨てられます。</p>
+
+    <p>Pause ボタンをタップすると録音が止まり、（Live と書かれた）Play ボタンをタップすると再開します。</p>
+
+    <p>つまみはつねにいちばん右にあり、そのラベルが録音の長さを秒で示します。この長さは、録音の前半が捨てられるたびに半分に跳ね戻ります。</p>
+
+    <p>再生モードに入るには、つまみを左へドラッグします。選んだ位置から再生が始まります。</p>
+
+    <p><strong>Playback モード:</strong> 録った音声と映像を再生し、Play ボタンには「Replay」と表示されます。</p>
+
+    <p>Pause ボタンをタップすると再生が止まり、（Replay と書かれた）Play ボタンをタップすると再開します。</p>
+
+    <p>Live モードに戻るには、つまみを右へドラッグするか、再生が終わるのを待つだけです。そのうえで Play ボタンをタップすると録音が始まります。それまでの録音は失われます。</p>
+
+    <h4>Waveform タブ</h4>
+    <p>マイク入力の波形を、滝のように流れるスペクトルに重ねて表示します。音を目で確かめるのに役立ちます。</p>
+
+    <figure>
+        <img src="assets/morereviewwave.jpg" alt="Review の Waveform タブ" loading="lazy">
+        <figcaption>音を目に見える形にした Review パネルの Waveform タブ</figcaption>
+    </figure>
+
+    <h4>Options タブ</h4>
+    <p>Review のツールの設定をします。</p>
+
+    <ul>
+        <li><strong>Camera Orientation:</strong> Video タブに、カメラを通して見たとおりの向き（Front）か、鏡に映したような向き（Mirror）かを選びます。</li>
+        <li><strong>Recording Length:</strong> 録音の長さの最小と最大を決めます。この 2 つの数は、上記の Live モードで述べたとおりに働きます。</li>
+        <li><strong>Device Selection:</strong> 端末に複数のカメラやマイクがあるとき、どれを使うかを選べます。</li>
+    </ul>
+
+    <figure>
+        <img src="assets/morereviewoptions.jpg" alt="Review の Options タブ" loading="lazy">
+        <figcaption>カメラ、録音、デバイスの設定を表示した Review パネルの Options タブ</figcaption>
+    </figure>
+
+    <h3 id="chapter-9-keyboard">9.7 More リング: Keyboard<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-keyboard"/></svg></h3>
+
+    <p>文字の入力と逐次検索のための画面上のキーボードです。</p>
+
+    <figure>
+        <img src="assets/morekeyboard.jpg" alt="切り離した Keyboard パネル。通常のキー（上）と特殊キー（下）" loading="lazy">
+        <figcaption>Keyboard パネル — 通常のキー（上）と特殊キー（下）</figcaption>
+    </figure>
+
+    <p>Keyboard パネルは、物理キーボードがない端末や、システムのソフトウェアキーボードを呼び出すのが煩わしい場面のために、
+    タイプライター風の画面上のキーボードを用意します。主な用途は 2 つです。</p>
+
+    <ul>
+        <li><strong>テキストの注釈</strong> — Ink リングの <a href="#chapter-6-text" class="chapter-link">Text</a> の注釈ツールに文字を入力します。</li>
+        <li><strong>逐次検索</strong> — 打つにつれて、対象の欄の表示が、最初に一致した項目だけに変わっていきます。逐次検索はファイルのパネル（Open と Save）と、あらゆるドロップダウンで使えます。もっとも役立つのは <a href="#chapter-6-symbols" class="chapter-link">Symbols パネル</a>のグループの選択です。</li>
+    </ul>
+
+    <p>「<strong>…</strong>」と書かれたキーを押すと、キーボードが<strong>特殊キー</strong>の配列に変わります。各国語の文字、カーソルの矢印キー、Home と End のキーが含まれます。「<strong>Aa</strong>」と書かれたキーで通常の文字のキーに戻ります。矢印キーは、物理のペダルを手元に置かずに <a href="#chapter-7-numbers" class="chapter-link">Bluetooth のフットペダルの設定</a>を確かめるのにも役立ちます。</p>
+
+
+    <figure>
+        <div class="video-container">
+            <img src="assets/moreprogressive.jpg" alt="逐次検索で Symbols のグループの一覧を絞り込む" loading="lazy">
+            <button type="button" class="play-overlay" aria-label="無音の動画を再生: 逐次検索で一覧を絞り込む" onclick="playVideo(this.parentElement)">再生</button>
+            <button type="button" aria-label="動画を閉じる" class="close-video" onclick="closeVideo(event, this.parentElement)">&times;</button>
+            <video aria-label="逐次検索で一覧を絞り込む（無音のデモ）" controls preload="none" tabindex="0">
+                <source src="assets/moreprogressive.webm" type="video/webm">
+                お使いのブラウザは video タグに対応していません。
+            </video>
+        </div>
+        <figcaption>逐次検索で Symbols のグループの一覧を絞り込む</figcaption>
+        <p class="video-status" role="status"></p>
+    </figure>
+
+    <h3 id="chapter-9-volume">9.8 More リング: Volume<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-volume"/></svg></h3>
+
+    <p>Podium が出すすべての音（メトロノーム、ピアノ、Review の再生）に効く音量調整です。</p>
+
+    <p>この音量調整は、端末自身の音量設定に対して音を絞る形で働きます。うまく使うには、端末の音量を大きめにしておき、Podium の音量スライダーで好みの高さまで下げてください。全画面で練習しているときなど、端末の音量の操作に手が届きにくい場面でとくに便利です。</p>
+
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+<section id="chapter-10">
+    <h2>第10章: 作者について</h2>
+
+    <p>私はコロラドに住むカナダ人のソフトウェア技術者です。もとはクラシックギター志望で、McGill 大学（<a href="https://www.mcgill.ca/music/" target="_blank">EMS</a>）と Stanford 大学（<a href="https://ccrma.stanford.edu/" target="_blank">CCRMA</a>）で音楽理論とコンピュータ音楽を学びました。ソフトウェア業界で 30 年ほど過ごしたのち、いまは余暇のあまりに多くを音楽のいろいろな企てに注いでいます。</p>
+
+    <p><em>-glen diener</em><br>
+    <a href="mailto:glen@studiop5.org">glen@studiop5.org</a></p>
+    <a href="#toc" class="back-to-toc">↑ 目次に戻る</a>
+</section>
+
+
+</main>
+
+<!-- BEGIN KEYWORD INDEX -->
+<nav id="keyword-index">
+    <style>
+        #keyword-index h2 { border-bottom: none; margin-top: 0; }
+        .idx-letter {
+            font-size: 1.3em; font-weight: bold; color: #2c3e50;
+            margin: 1.2em 0 0.3em; border-bottom: 1px solid #dee2e6;
+            padding-bottom: 0.2em;
+        }
+        .idx-letter:first-of-type { margin-top: 0.5em; }
+        #keyword-index dl { margin: 0; columns: 2; column-gap: 2em; }
+        #keyword-index dt { display: inline; font-weight: 500; color: #333; }
+        #keyword-index dd { display: inline; margin: 0; }
+        #keyword-index dd::after { content: ""; display: block; }
+        #keyword-index dd a { font-size: 0.9em; }
+        @media print { #keyword-index { page-break-before: always; } }
+        @media (max-width: 600px) { #keyword-index dl { columns: 1; } }
+    </style>
+    <h2>Index</h2>
+    <div class="idx-letter">A</div>
+    <dl>
+        <dt>About<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-about"/></svg></dt><dd> &mdash; <a href="#chapter-8-about">8.1</a></dd>
+        <dt>About the Author</dt><dd> &mdash; <a href="#chapter-10">Ch.10</a></dd>
+        <dt>Add<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-new-page"/></svg></dt><dd> &mdash; <a href="#chapter-7-add">7.2</a></dd>
+        <dt>Annotations</dt><dd> &mdash; <a href="#chapter-1">Ch.1</a>, <a href="#chapter-6">Ch.6</a></dd>
+        <dt>App Ring</dt><dd> &mdash; <a href="#chapter-8">Ch.8</a></dd>
+        <dt>Aspect ratio</dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
+    </dl>
+    <div class="idx-letter">B</div>
+    <dl>
+        <dt>Book<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-book"/></svg></dt><dd> &mdash; <a href="#chapter-5-book">5.1</a></dd>
+        <dt>Bookmarks</dt><dd> &mdash; <a href="#chapter-5-bookmarks">Ch.5</a></dd>
+        <dt>Bravura font</dt><dd> &mdash; <a href="#chapter-6-symbols">6.4</a></dd>
+        <dt>Browser Compatibility</dt><dd> &mdash; <a href="#chapter-2-compat">2.3</a></dd>
+        <dt>Browser Extension</dt><dd> &mdash; <a href="#chapter-2-extension">2.1</a>, <a href="#chapter-2">Ch.2</a></dd>
+        <dt>Browser tab naming</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+    </dl>
+    <div class="idx-letter">C</div>
+    <dl>
+        <dt>Cell Auto-Deactivation</dt><dd> &mdash; <a href="#chapter-3-auto-deactivation">Ch.3</a></dd>
+        <dt>Cell Locking</dt><dd> &mdash; <a href="#chapter-3-cell-locking">Ch.3</a>, <a href="#chapter-6">Ch.6</a></dd>
+        <dt>Clock<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-clock"/></svg></dt><dd> &mdash; <a href="#chapter-9-clock">9.4</a></dd>
+        <dt>Close<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-close"/></svg></dt><dd> &mdash; <a href="#chapter-4-close">4.3</a></dd>
+        <dt>Cloud storage</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Color chooser</dt><dd> &mdash; <a href="#chapter-6-pen-pencil">6.1</a>, <a href="#chapter-7-add">7.2</a></dd>
+        <dt>Conducting patterns</dt><dd> &mdash; <a href="#chapter-9-metronome">9.2</a></dd>
+        <dt>Copy</dt><dd> &mdash; <a href="#chapter-6-cut-copy-paste">6.5</a>, <a href="#chapter-7-cut-copy-paste">7.3</a></dd>
+        <dt>CPDL</dt><dd> &mdash; <a href="#chapter-2">Ch.2</a></dd>
+        <dt>Cross-instance sharing</dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a></dd>
+        <dt>CSS pixels</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-5-horizontal">5.2</a></dd>
+        <dt>Curtain<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-curtain"/></svg></dt><dd> &mdash; <a href="#chapter-8-curtain">8.5</a></dd>
+        <dt>Cut</dt><dd> &mdash; <a href="#chapter-6-cut-copy-paste">6.5</a>, <a href="#chapter-7-cut-copy-paste">7.3</a></dd>
+    </dl>
+    <div class="idx-letter">D</div>
+    <dl>
+        <dt>Dark theme</dt><dd> &mdash; <a href="#chapter-8-theme">8.2</a></dd>
+        <dt>Delcamp</dt><dd> &mdash; <a href="#chapter-2">Ch.2</a></dd>
+        <dt>Detached Panels</dt><dd> &mdash; <a href="#chapter-9-detached">9.1</a></dd>
+        <dt>Details<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-details"/></svg></dt><dd> &mdash; <a href="#chapter-4-details">4.5</a></dd>
+        <dt>Display quality</dt><dd> &mdash; <a href="#chapter-4-details">4.5</a></dd>
+        <dt>Drag and drop</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Dropbox</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+    </dl>
+    <div class="idx-letter">E</div>
+    <dl>
+        <dt>E-reader</dt><dd> &mdash; <a href="#overture">Overture</a></dd>
+        <dt>Edit<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-edit"/></svg></dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
+        <dt>Equal temperament</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Expand mode</dt><dd> &mdash; <a href="#chapter-4-details">4.5</a></dd>
+        <dt>Export</dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a></dd>
+    </dl>
+    <div class="idx-letter">F</div>
+    <dl>
+        <dt>File System Access API</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Firefox settings</dt><dd> &mdash; <a href="#firefox-settings">4.1</a></dd>
+        <dt>Fit</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-5-refit">chapter-5-refit</a></dd>
+        <dt>Flatten<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-flatten"/></svg></dt><dd> &mdash; <a href="#chapter-7-flatten">7.7</a></dd>
+        <dt>Fling gesture</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a>, <a href="#chapter-5-page-turning">Ch.5</a></dd>
+        <dt>Foot Pedal</dt><dd> &mdash; <a href="#chapter-2-foot-pedal">2.4</a>, <a href="#chapter-7-numbers">7.1</a></dd>
+        <dt>Full screen</dt><dd> &mdash; <a href="#chapter-8-screen">8.7</a>, <a href="#chapter-3">Ch.3</a></dd>
+    </dl>
+    <div class="idx-letter">G</div>
+    <dl>
+        <dt>Gestures</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+        <dt>Google Drive</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Grid<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-grid"/></svg></dt><dd> &mdash; <a href="#chapter-6-grid">6.7</a></dd>
+        <dt>Grip</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+        <dt>Group selection</dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
+        <dt>Guide<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-guide"/></svg></dt><dd> &mdash; <a href="#chapter-8-guide">8.3</a></dd>
+        <dt>Gutter</dt><dd> &mdash; <a href="#chapter-5-page-turning">Ch.5</a></dd>
+    </dl>
+    <div class="idx-letter">H</div>
+    <dl>
+        <dt>Horizontal<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-horizontal-scroll"/></svg></dt><dd> &mdash; <a href="#chapter-5-horizontal">5.2</a></dd>
+    </dl>
+    <div class="idx-letter">I</div>
+    <dl>
+        <dt>Images, importing</dt><dd> &mdash; <a href="#chapter-6-cut-copy-paste">6.5</a></dd>
+        <dt>Import<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-export-page"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-import-page"/></svg></dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a></dd>
+        <dt>IMSLP</dt><dd> &mdash; <a href="#chapter-2">Ch.2</a></dd>
+        <dt>Ink Ring</dt><dd> &mdash; <a href="#chapter-6">Ch.6</a></dd>
+        <dt>Inner ring</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+        <dt>Installation</dt><dd> &mdash; <a href="#chapter-2">Ch.2</a></dd>
+        <dt>Interface Basics</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+    </dl>
+    <div class="idx-letter">K</div>
+    <dl>
+        <dt>Keyboard<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-keyboard"/></svg></dt><dd> &mdash; <a href="#chapter-9-keyboard">9.7</a></dd>
+        <dt>Keyboard shortcuts</dt><dd> &mdash; <a href="#chapter-7-numbers">7.1</a></dd>
+    </dl>
+    <div class="idx-letter">L</div>
+    <dl>
+        <dt>Layout Ring</dt><dd> &mdash; <a href="#chapter-5">Ch.5</a></dd>
+        <dt>Light theme</dt><dd> &mdash; <a href="#chapter-8-theme">8.2</a></dd>
+        <dt>Line drawing</dt><dd> &mdash; <a href="#chapter-6-pen-pencil">6.1</a></dd>
+        <dt>Live mode</dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
+        <dt>Local storage</dt><dd> &mdash; <a href="#chapter-8-storage">8.4</a></dd>
+        <dt>Long press</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+    </dl>
+    <div class="idx-letter">M</div>
+    <dl>
+        <dt>Magnify<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-magnify"/></svg></dt><dd> &mdash; <a href="#chapter-7-magnify">7.8</a></dd>
+        <dt>Manuscript paper</dt><dd> &mdash; <a href="#chapter-6-rastrum">6.2</a>, <a href="#chapter-7-flatten">7.7</a></dd>
+        <dt>Merge<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-merge"/></svg></dt><dd> &mdash; <a href="#chapter-7-merge">7.6</a></dd>
+        <dt>Metadata</dt><dd> &mdash; <a href="#chapter-4-details">4.5</a></dd>
+        <dt>Metronome<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-metronome"/></svg></dt><dd> &mdash; <a href="#chapter-9-metronome">9.2</a></dd>
+        <dt>Microphone</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a>, <a href="#chapter-9-review">9.6</a></dd>
+        <dt>More Ring</dt><dd> &mdash; <a href="#chapter-9">Ch.9</a></dd>
+        <dt>Mouse controls</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+    </dl>
+    <div class="idx-letter">N</div>
+    <dl>
+        <dt>Navigation</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-1">Ch.1</a></dd>
+        <dt>New<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-new-score"/></svg></dt><dd> &mdash; <a href="#chapter-4-new">4.2</a></dd>
+        <dt>Numbers<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-numbers"/></svg></dt><dd> &mdash; <a href="#chapter-7-numbers">7.1</a></dd>
+    </dl>
+    <div class="idx-letter">O</div>
+    <dl>
+        <dt>Offline use</dt><dd> &mdash; <a href="#chapter-2">Ch.2</a></dd>
+        <dt>OneDrive</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Opacity</dt><dd> &mdash; <a href="#chapter-6-pen-pencil">6.1</a>, <a href="#chapter-7-add">7.2</a></dd>
+        <dt>Open</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Open source</dt><dd> &mdash; <a href="#overture">Overture</a></dd>
+        <dt>Outer ring</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+    </dl>
+    <div class="idx-letter">P</div>
+    <dl>
+        <dt>Page numbers</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-7-numbers">7.1</a>, <a href="#chapter-5-page-turning">Ch.5</a></dd>
+        <dt>Page ordering</dt><dd> &mdash; <a href="#chapter-5-table">5.4</a></dd>
+        <dt>Page range</dt><dd> &mdash; <a href="#chapter-4-print">4.4</a></dd>
+        <dt>Page Ring</dt><dd> &mdash; <a href="#chapter-7">Ch.7</a></dd>
+        <dt>Page sizing</dt><dd> &mdash; <a href="#chapter-4-details">4.5</a></dd>
+        <dt>Page Turning</dt><dd> &mdash; <a href="#chapter-5-page-turning">Ch.5</a></dd>
+        <dt>Pager</dt><dd> &mdash; <a href="#chapter-5-page-turning">Ch.5</a></dd>
+        <dt>Password-protected PDF</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Paste<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-cut-page"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-copy-page"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-paste-page"/></svg></dt><dd> &mdash; <a href="#chapter-6-cut-copy-paste">6.5</a>, <a href="#chapter-7-cut-copy-paste">7.3</a></dd>
+        <dt>Paste buffer</dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a></dd>
+        <dt>PDF files</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a>, <a href="#overture">Overture</a></dd>
+        <dt>Pen</dt><dd> &mdash; <a href="#chapter-6-pen-pencil">6.1</a></dd>
+        <dt>Pencil<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-pen"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-pencil"/></svg></dt><dd> &mdash; <a href="#chapter-6-pen-pencil">6.1</a></dd>
+        <dt>Piano<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-piano"/></svg></dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Pinch-zoom</dt><dd> &mdash; <a href="#chapter-5-book">5.1</a>, <a href="#chapter-3">Ch.3</a>, <a href="#chapter-5-refit">chapter-5-refit</a></dd>
+        <dt>Pitch detector</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Playback</dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
+        <dt>Practice scores</dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a></dd>
+        <dt>Precision sliders</dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
+        <dt>Print<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-print"/></svg></dt><dd> &mdash; <a href="#chapter-4-print">4.4</a></dd>
+        <dt>Privacy</dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a>, <a href="#chapter-8-storage">8.4</a></dd>
+        <dt>Progressive Web App (PWA)</dt><dd> &mdash; <a href="#chapter-2-pwa">2.2</a>, <a href="#chapter-2">Ch.2</a></dd>
+    </dl>
+    <div class="idx-letter">Q</div>
+    <dl>
+        <dt>Quick Start</dt><dd> &mdash; <a href="#chapter-1">Ch.1</a></dd>
+    </dl>
+    <div class="idx-letter">R</div>
+    <dl>
+        <dt>Rastrum<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-rastrum"/></svg></dt><dd> &mdash; <a href="#chapter-6-rastrum">6.2</a></dd>
+        <dt>Recent files</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a>, <a href="#chapter-8-storage">8.4</a></dd>
+        <dt>Recording</dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
+        <dt>Reorder pages</dt><dd> &mdash; <a href="#chapter-5-table">5.4</a></dd>
+        <dt>Resize</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+        <dt>Revert to saved</dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Review<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-review"/></svg></dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
+        <dt>Roman numerals</dt><dd> &mdash; <a href="#chapter-7-numbers">7.1</a></dd>
+        <dt>Rotating rings</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+        <dt>Running Podium</dt><dd> &mdash; <a href="#chapter-2">Ch.2</a></dd>
+    </dl>
+    <div class="idx-letter">S</div>
+    <dl>
+        <dt>Salamander Grand Piano</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Save<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-open"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-save"/></svg></dt><dd> &mdash; <a href="#chapter-4-open-save">4.1</a></dd>
+        <dt>Score Ring</dt><dd> &mdash; <a href="#chapter-4">Ch.4</a></dd>
+        <dt>Screen<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-full-screen"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-normal-screen"/></svg></dt><dd> &mdash; <a href="#chapter-8-screen">8.7</a></dd>
+        <dt>Scrubber</dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
+        <dt>Shared buffer</dt><dd> &mdash; <a href="#chapter-7-export-import">7.5</a></dd>
+        <dt>Sliders</dt><dd> &mdash; <a href="#chapter-3">Ch.3</a></dd>
+        <dt>SMuFL</dt><dd> &mdash; <a href="#chapter-6-symbols">6.4</a></dd>
+        <dt>Snap scrolling</dt><dd> &mdash; <a href="#chapter-5-horizontal">5.2</a>, <a href="#chapter-5-vertical">5.3</a></dd>
+        <dt>Spectrogram</dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
+        <dt>Split times</dt><dd> &mdash; <a href="#chapter-9-stopwatch">9.3</a></dd>
+        <dt>Staff space</dt><dd> &mdash; <a href="#chapter-6-rastrum">6.2</a>, <a href="#chapter-6-symbols">6.4</a></dd>
+        <dt>Staves</dt><dd> &mdash; <a href="#chapter-6-rastrum">6.2</a></dd>
+        <dt>Stopwatch<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-stopwatch"/></svg></dt><dd> &mdash; <a href="#chapter-9-stopwatch">9.3</a></dd>
+        <dt>Storage<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-storage"/></svg></dt><dd> &mdash; <a href="#chapter-8-storage">8.4</a></dd>
+        <dt>Sustain mode</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Symbol library</dt><dd> &mdash; <a href="#chapter-6-symbols">6.4</a></dd>
+        <dt>Symbols<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-symbols"/></svg></dt><dd> &mdash; <a href="#chapter-6-symbols">6.4</a></dd>
+    </dl>
+    <div class="idx-letter">T</div>
+    <dl>
+        <dt>Tablature</dt><dd> &mdash; <a href="#chapter-6-rastrum">6.2</a></dd>
+        <dt>Table<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-table"/></svg></dt><dd> &mdash; <a href="#chapter-5-table">5.4</a></dd>
+        <dt>Temperament</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Text<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-text"/></svg></dt><dd> &mdash; <a href="#chapter-6-text">6.3</a></dd>
+        <dt>Theme<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-light"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-glass"/></svg><svg aria-hidden="true" focusable="false" class="gb-icon"><use href="#gb-dark"/></svg></dt><dd> &mdash; <a href="#chapter-8-theme">8.2</a></dd>
+        <dt>Timbre</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Transform handles</dt><dd> &mdash; <a href="#chapter-6-edit">6.8</a></dd>
+        <dt>Tuner</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+        <dt>Two-finger double-tap</dt><dd> &mdash; <a href="#chapter-5-refit">chapter-5-refit</a></dd>
+    </dl>
+    <div class="idx-letter">U</div>
+    <dl>
+        <dt>Undo<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-undo"/></svg></dt><dd> &mdash; <a href="#chapter-6-undo">6.6</a>, <a href="#chapter-7-undo">7.4</a></dd>
+        <dt>Undo history</dt><dd> &mdash; <a href="#chapter-6-undo">6.6</a>, <a href="#chapter-7-undo">7.4</a></dd>
+        <dt>Using Podium in Your Language</dt><dd> &mdash; <a href="#chapter-2-language">2.5</a></dd>
+    </dl>
+    <div class="idx-letter">V</div>
+    <dl>
+        <dt>Vertical<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-vertical-scroll"/></svg></dt><dd> &mdash; <a href="#chapter-5-vertical">5.3</a></dd>
+        <dt>Volume<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-volume"/></svg></dt><dd> &mdash; <a href="#chapter-9-volume">9.8</a></dd>
+    </dl>
+    <div class="idx-letter">W</div>
+    <dl>
+        <dt>Wakelock<svg aria-hidden="true" focusable="false" class="gb-icon" style="margin-left:0.3em"><use href="#gb-wakelock"/></svg></dt><dd> &mdash; <a href="#chapter-8-wakelock">8.6</a></dd>
+        <dt>Waveform</dt><dd> &mdash; <a href="#chapter-9-review">9.6</a></dd>
+    </dl>
+    <div class="idx-letter">Y</div>
+    <dl>
+        <dt>YIN pitch detection</dt><dd> &mdash; <a href="#chapter-9-piano">9.5</a></dd>
+    </dl>
+    <div class="idx-letter">Z</div>
+    <dl>
+        <dt>Zoom</dt><dd> &mdash; <a href="#chapter-7-magnify">7.8</a>, <a href="#chapter-3">Ch.3</a></dd>
+    </dl>
+    <a href="#toc" class="back-to-toc">&uarr; Back to Table of Contents</a>
+</nav>
+<!-- END KEYWORD INDEX -->
+
+<footer style="margin-top:3em;padding:2em 1em;border-top:1px solid #ccc;font-size:.75em;color:#666;text-align:center;">
+    <p>Copyright &copy; 2025 Glendon Diener. この文書は Podium プロジェクトの一部であり、<a href="https://www.gnu.org/licenses/agpl-3.0-standalone.html" target="_blank">GNU Affero General Public License v3</a> のもとで提供されます。</p>
+    <p>この文書に挙げた製品名、ロゴ、ブランドはすべてそれぞれの所有者の財産であり、識別の目的でのみ用いています。</p>
+    <p>Podium で開く譜面ファイルを使用する権利があるかどうかは、利用者の責任で確認してください。</p>
+</footer>
+
+</body>
+</html>

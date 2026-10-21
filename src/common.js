@@ -78,12 +78,28 @@ Element.prototype["replace"] = function(newElm) {
 
 // window._menu_  // defined in main.js
 window._podiumVersion_ = "2.3.0";
+// Replaced by build.py with the build's UTC timestamp. It stays "dev" when the
+// sources are served directly, and the Version panel shows it, because the
+// version alone cannot tell you whether a deployment reached a device: that
+// question comes up on every PWA update, where the service worker may still be
+// answering from its cache.
+window._podiumBuild_ = "dev";
+// The commit those sources came from, stamped by the same build step. A date
+// narrows a build down; a hash names it. "dev" when the sources are served
+// directly, "unknown" when built without git, and a "-dirty" suffix when the
+// tree had uncommitted changes, so the hash does not fully describe the build.
+window._podiumCommit_ = "dev";
 window._body_ = document.body;
 window._lastTarget_ = null; // last touched .pz element, excluding EditPanel
 window._dvPxRt_ = 1 + (devicePixelRatio - 1) * 0.3;
 window._gs_ = 618; // golden section (reciprocal) msec (.618 seconds)
 window._gsgs_ = (_gs_ * _gs_) / 1000; // shorter golden section!
 window._sliderPrecision_ = 4; // sensitivity multiplier for slider/pager precision mode
+// How far a finger must travel for a press on the background to be the up/down
+// swipe that parks the menu or toggles fullscreen (see Gestures.watch). Shared,
+// because a page-number band answers for a strip of that background and has to
+// know when the swipe's reading of the gesture wins over its own.
+window._swipeDelta_ = () => Math.min(innerWidth, innerHeight) * 0.15;
 window._zTop_ = 300; // continuously incrementing z-index counter for panels, menu, surfaces
 window._mobile_ = window.matchMedia('(pointer: coarse)').matches;
 window._msPerObj_ = 1; // for pdf printing, see score.toPdf()
@@ -2230,6 +2246,10 @@ let fontMap = {
     fontStyle: "italic",
     fontWeight: "bold",
   },
+  // The only bundled font with Japanese glyphs. score.js also falls back to it
+  // when the chosen font cannot show the text, since the standard fonts are
+  // WinAnsi-encoded and fail on anything outside that repertoire.
+  "Noto Sans JP": { fontFamily: "Noto Sans JP", fontStyle: "normal", fontWeight: "normal" },
   Bravura: { fontFamily: "Bravura", fontStyle: "normal", fontWeight: "normal" },
   Vercetti: { fontFamily: "Vercetti", fontStyle: "normal", fontWeight: "normal" },
   "Patrick Hand": { fontFamily: "Patrick Hand", fontStyle: "normal", fontWeight: "normal" },

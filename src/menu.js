@@ -509,6 +509,11 @@ class Menu {
           stash: {
             fit: "Auto", // "Auto","Width","Height","None",
             pnShow: "On", // "On" or "Off"
+            // Which edges the page-number bands sit on ("L-R" down the sides,
+            // "T-B" across the ends) and whether they take a strip of their own
+            // ("Inset") or lie over the pages ("Over"). One key, so that a
+            // Podium that knows nothing of it carries it through a save intact.
+            pnBand: { axis: "L-R", place: "Inset" },
             pace: 350, // pace: animation speed in msecs/flip
             pz: null, // user pan-zoom saved with the score. When set: { left, top, fontSize, w, h }; applied only when w/h match the current viewport (see Layout.userPz)
           },
@@ -521,6 +526,7 @@ class Menu {
             fit: "Auto", // "Auto", "Width","Height","None"
             gap: 0.2, // [0,10]% of fit dimension
             pnShow: "On",
+            pnBand: { axis: "L-R", place: "Inset" }, // see book cell
             pgShow: 2,
             pgSnap: 2, // -4:none, -3:visible, -2:1/4pg, -1:1/3 pg, 0:1/2 pg
             pace: 350, // msec/snap
@@ -535,6 +541,7 @@ class Menu {
             fit: "Auto", // "Auto", "Width","Height","None"
             gap: 0.2, // [0,10]% of fit dimension
             pnShow: "On",
+            pnBand: { axis: "T-B", place: "Inset" }, // see book cell
             pgShow: 1, // [1,_score_.pages.length)
             pgSnap: 0,  // i.e. 1/2 pg
             pace: 350, // msec/snap
@@ -565,9 +572,14 @@ class Menu {
     this.listen("layout/up", () => this.activateRing(rings.layout));
     let paths = Object.keys(rings.layout.cells).map((path) => `layout/${path}/`);
    
-    this.listen(paths.map((path) => path + "up"), 
+    this.listen(paths.map((path) => path + "up"),
       async (cell) => {
+        // Re-tapping the layout already on screen refits it, discarding a
+        // pinch-and-drag. Opening it again would not: the destructor saves the
+        // pan-zoom and the rebuild restores it, so the tap would cost a
+        // "Formatting" shade and change nothing.
         this.activateCell(cell);
+        if (Layout.activeLayout?.cell == cell) return void Layout.activeLayout.refit();
         await Layout.open(cell);
       }
     );

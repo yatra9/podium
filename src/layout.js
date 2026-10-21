@@ -300,6 +300,91 @@ class Layout {
   }
 
 
+  async refit() {
+    // Throw away the remembered pan-zoom and rebuild at the cell's Fit setting,
+    // which is the only way back once the score has been pinched and dragged:
+    // switching layouts and back restores the pan-zoom, because remembering it
+    // is the point (see capturePz). Reached by re-tapping the Fit already
+    // chosen, by re-tapping the active layout cell, and by a two-finger
+    // double-tap on the layout.
+    this.cell.stash.pz = null;
+    // Leaving the marker would let the next capturePz() store the fitted
+    // geometry as though it were a view the reader had chosen, so the fit would
+    // survive as a pan-zoom and this would be a reset that resets nothing.
+    this.elm.classList.remove("pz-set");
+    // A quiet rebuild: the fit lives in the em geometry, which this recomputes,
+    // and the flight out of the menu cell is exactly what is not wanted here --
+    // the view is already on screen and is meant to snap back, not arrive. What
+    // a quiet rebuild also does not do is move the layout, since a rebuild
+    // after a cut or a paste must leave the reader's view alone, so place it.
+    await this.build(false);
+    this.place();
+  }
+
+  place() {
+    // Put the layout where a fresh open would have landed it, instantly.
+    // Instantly means dropping any transition first: a reader who pinches and
+    // double-taps while the layout is still flying out of its menu cell would
+    // otherwise have the snap glide, the flight's transition still being on the
+    // element. (The interrupted flight passes no finalize, so nothing is
+    // stranded by the transitionend that now never comes.)
+    this.elm.style.transition = "unset";
+    // centerLT measures the built layout, so the font size has to be settled
+    // first -- and settled it is, at 1em, since the fit is carried by the em
+    // geometry rather than by the scale it is drawn at.
+    this.elm.style.fontSize = "1em";
+    reflow();
+    Object.assign(this.elm.style, this.centerLT());
+  }
+
+  // Which edges the page-number bands sit on when a score does not say
+  // otherwise. Book and Horizontal have always used the sides, Vertical the ends.
+  static pnDefaultAxes = { book: "L-R", horizontal: "L-R", vertical: "T-B" };
+
+  get pnDefaultAxis() { return Layout.pnDefaultAxes[this.cell.key] ?? "L-R"; }
+
+  static normalizePn(cell) {
+    // pnShow stays the "On"/"Off" it has always been, so a score saved here and
+    // opened in a Podium that knows nothing of movable bands still shows its
+    // page numbers, at that Podium's own edges. The band's own two choices
+    // travel together in pnBand, which such a Podium never reads but does carry
+    // through its own save untouched (an unknown key in a cell's stash is
+    // copied in and written back; see Menu.stashFromJsonObj). A score older
+    // than pnBand -- or one whose stash has been edited into nonsense -- gets
+    // this layout's long-standing edges. Table has no band to place.
+    let axis = Layout.pnDefaultAxes[cell.key];
+    if (!axis) return cell.stash;
+    let band = cell.stash.pnBand;
+    if (!band || typeof band != "object") band = cell.stash.pnBand = {};
+    if (band.axis != "L-R" && band.axis != "T-B") band.axis = axis;
+    if (band.place != "Inset" && band.place != "Over") band.place = "Inset";
+    return cell.stash;
+  }
+
+  pnAxis() {
+    // The edges the number bands sit on: "L-R" (a tall band down each side) or
+    // "T-B" (a wide one across the top and the foot), and null when the reader
+    // has turned the numbers off.
+    if (this.pnShow != "On") return null;
+    return this.pnBand?.axis ?? this.pnDefaultAxis;
+  }
+
+  pnOver() {
+    // Whether the bands are drawn over the pages rather than beside them. Over
+    // the pages they cost no room at all, which is the point: a band is 45px of
+    // a dimension the fit may be fighting for. Pages are engraved with a margin
+    // of their own, so the numbers land on paper rather than on music.
+    return this.pnAxis() != null && this.pnBand?.place == "Over";
+  }
+
+  pnGirth(axis) {
+    // How much room the bands take from @axis ("L-R" takes it from the width,
+    // "T-B" from the height). An edge with no band on it, or with one drawn
+    // over the pages, still keeps Layout.margin so a page cannot touch the
+    // layout's own border.
+    return this.pnAxis() == axis && !this.pnOver() ? Pager.width : Layout.margin;
+  }
+
   userPz() {
     // The user's saved pan-zoom for this layout's cell, but only if it was captured
     // at the current viewport size; otherwise null, so the default fit is used.
@@ -333,6 +418,9 @@ class Layout {
     // A build interrupted by the layout's destruction just ends: callers (e.g.
     // Layout.open) see a normal return, as they did before whileAlive() existed.
     try {
+      // Every build reads the cell's stash, so this is where a settings value
+      // one version old is settled (see normalizePn).
+      Layout.normalizePn(this.cell);
       return await this._build(...args);
     } catch (err) {
       if (!(err instanceof LayoutDestroyed)) throw err;
@@ -659,7 +747,24 @@ class Layout {
     return false;
   }
 
-  cancelNav() {}
+  navGen = 0;   // bumped by cancelNav; see the guard in each onDown
+
+  cancelNav() {
+    // A second finger has arrived, so the one-finger page navigation this
+    // layout began is off. Subclasses override to undo whatever they had
+    // started to move, and call this to drop the listeners -- the pointerup
+    // above all. A pinch ends with two fingers lifting, and the second lift is
+    // not a tap on the score: left listening, it reads that lift as a tap and
+    // turns a page out from under the pinch. (Pinching low on a page and
+    // lifting would advance it, and a two-finger double-tap would both refit
+    // the layout and move it on, which is how this was found.)
+    // @return whether there was a navigation to cancel.
+    this.navGen++;
+    let navigating = !!this.navMv;
+    unlisten(this.navMv, this.navUp);
+    this.navMv = this.navUp = null;
+    return navigating;
+  }
 
   async pgOpen(how) {
     // Subclasses override with logic to open page, where @how is one
@@ -729,6 +834,15 @@ class Layout {
       _score_.numbers.pn = pn;
       _body_.dispatchEvent(new CustomEvent("NUMBERS", { detail: {sender:this} }));
     }
+  }
+
+  pagerClaim(e) {
+    // Offer a press to the page-number bands before reading it as a page turn.
+    // A band answers for a little of the page beside it, where its bookmark
+    // tabs overhang, and for a little of the margin outside it: see
+    // Pager.claim(). Table has no bands.
+    // @return whether a band took the press.
+    return !!(this.pagerLeft?.tryClaim(e) || this.pagerRight?.tryClaim(e));
   }
 
   centerLT(otherStyles = {}) {
@@ -932,7 +1046,6 @@ class BookLayout extends Layout {
       if (!adjusting && pn > pgCount) return (cursor.textContent = "\u2219"); // no pg on right side, so no pn either
       return pnToDiv(pn, cursor);
     });
-    this.pagerLeft.elm.style.left = this.pagerRight.elm.style.right = 0;
   }
 
   destructor() {
@@ -960,10 +1073,17 @@ class BookLayout extends Layout {
     // top/bottom gap and left/right gap, for a border-radius of .8em
     g.tbGap = .2 * _pxPerEm_; 
     g.borderPx = 0.025 * _pxPerEm_ * 2; // top+bottom border included in box-sizing:border-box height
-    g.lrGap = this.pnShow ==  "On"? 0: g.tbGap ;
     // Pager always occupies its own strip (hidden or not), lrGap=0 when pager is present.
     // Hidden pager gets Layout.margin width — narrow but non-overlapping with pages.
-    g.pagerWidth = this.pnShow == "On" ? Pager.width : Layout.margin;
+    // Which pair of edges the bands sit on is the reader's, so that their 45px
+    // can be taken off whichever dimension the fit is not fighting for; drawn
+    // over the pages they take nothing from either (see Layout.pnGirth).
+    g.pagerWidth = this.pnGirth("L-R");
+    g.lrGap = g.pagerWidth > Layout.margin ? 0 : g.tbGap; // a band is its own gap
+    // The ends keep the plain gap when no band is on them, and that gap is in em
+    // so it scales with the reader's zoom; a band does not (see the width below).
+    g.pagerHeight = Math.max(this.pnGirth("T-B"), g.tbGap);
+    g.pagerHeightPx = this.pnAxis() == "T-B" && !this.pnOver() ? g.pagerHeight : 0;
     g.pgCount = this.score.pgs.length;
     let spineT = Math.min(g.pgCount / 100, 1);
     g.bindingWidth = (0.5 + spineT) * _pxPerEm_;
@@ -972,14 +1092,14 @@ class BookLayout extends Layout {
       g.pgWidth = score.maxWidth;
       g.pgHeight = score.maxHeight;
       g.bookWidth = g.lrGap + g.pagerWidth + g.pgWidth + g.pgWidth + g.pagerWidth + g.lrGap;
-      g.bookHeight = g.tbGap + g.pgHeight + g.tbGap + g.borderPx;
+      g.bookHeight = g.pagerHeight + g.pgHeight + g.pagerHeight + g.borderPx;
     }
 
     if (fit == "auto" || fit == "width") {
       g.bookWidth = innerWidth - Layout.margin - Layout.margin;
       g.pgWidth = (g.bookWidth - g.pagerWidth - g.lrGap - g.lrGap - g.pagerWidth) / 2;
       g.pgHeight = Math.floor(g.pgWidth * (score.maxHeight / score.maxWidth));
-      g.bookHeight = g.tbGap + g.pgHeight + g.tbGap + g.borderPx;
+      g.bookHeight = g.pagerHeight + g.pgHeight + g.pagerHeight + g.borderPx;
 
       if(fit == "auto") {
         // Check if layout will fit entirely within window. If not, recalculate with fit = HEIGHT;
@@ -989,7 +1109,7 @@ class BookLayout extends Layout {
         if(layoutWidth > innerWidth)
           fit = "height";
         else {
-          let layoutHeight = Math.round(Layout.margin * 2 + g.pgHeight + g.tbGap * 2 + g.borderPx);
+          let layoutHeight = Math.round(Layout.margin * 2 + g.pgHeight + g.pagerHeight * 2 + g.borderPx);
           if(layoutHeight > innerHeight) fit = "height";
         }
       }
@@ -997,7 +1117,7 @@ class BookLayout extends Layout {
 
     if (fit == "height") {
       g.bookHeight = innerHeight - Layout.margin - Layout.margin;
-      g.pgHeight = g.bookHeight - g.tbGap - g.tbGap - g.borderPx;
+      g.pgHeight = g.bookHeight - g.pagerHeight - g.pagerHeight - g.borderPx;
       g.pgWidth = Math.floor(g.pgHeight * (score.maxWidth / score.maxHeight));
       g.bookWidth = g.lrGap + g.pagerWidth + g.pgWidth + g.pgWidth + g.pagerWidth + g.lrGap;
     }
@@ -1014,11 +1134,12 @@ class BookLayout extends Layout {
 
     // book
     Object.assign(this.layout.style, {
-      height: toEm(g.bookHeight),
       // Note that book's width is set by adding pagerWidth in px, then subtracting pagerWidth in em's.
       // Initially, they are equal, so contribute nothing, but if/when the book is resized through em change,
       // their difference will account for delta between the pagers, which don't scale, and
-      // the book itself, which does.
+      // the book itself, which does. The height gets the same treatment, but only
+      // for the part of it a band occupies: the plain end gap is em and scales.
+      height: `calc(${toEm(g.bookHeight)} + ${g.pagerHeightPx * 2}px - ${toEm(g.pagerHeightPx * 2)})`,
       width: `calc(${toEm(g.bookWidth)} + ${g.pagerWidth * 2}px - ${toEm(g.pagerWidth * 2)})`,
     });
 
@@ -1027,7 +1148,7 @@ class BookLayout extends Layout {
     this.binding.style.left = `calc(50% - ${toEm(g.bindingWidth / 2)})`;
 
     // spine...slots attach here. --stitch-w and --pg-h drive ::before/::after dot strips.
-    this.spine.style.top = toEm(g.tbGap);
+    this.spine.style.top = toEm(g.pagerHeight);
     this.spine.style.setProperty('--stitch-w', toEm(g.bindingWidth * 0.8));
     this.spine.style.setProperty('--pg-h', toEm(g.pgHeight));
 
@@ -1044,10 +1165,20 @@ class BookLayout extends Layout {
     }
     this.layoutSlots();
 
-    // pagers
+    // pagers. The left page's number goes above the right page's when the bands
+    // move to the ends, which is the only reading of top and bottom that keeps
+    // the pages' own order. They stack above the spine, which carries a z-index
+    // of its own: drawn over the pages they would otherwise be under them, and
+    // a finger on a band would turn the page instead of scrubbing to one.
+    this.pagerLeft.elm.style.zIndex = this.pagerRight.elm.style.zIndex = 20;
+    // With the numbers off the bands keep the edges they would have had: hidden
+    // is not gone, and they still answer a finger that lands on them.
+    let ends = (this.pnAxis() ?? this.pnDefaultAxis) == "T-B";
+    this.pagerLeft.setPosition(ends ? "top" : "left");
+    this.pagerRight.setPosition(ends ? "bottom" : "right");
     this.layout.append(this.pagerLeft.elm);
     this.layout.append(this.pagerRight.elm);
-    let pagerHidden = this.pnShow != "On";
+    let pagerHidden = this.pnAxis() == null;
     this.pagerLeft.setHidden(pagerHidden, Layout.margin);
     this.pagerRight.setHidden(pagerHidden, Layout.margin);
     this.pagerLeft.build();
@@ -1070,6 +1201,11 @@ class BookLayout extends Layout {
   }
 
   async onDown(e) {
+    // Asked before anything else, and before any await: a bookmark tab reaches
+    // a little way over the page it marks, and a finger there means the tab,
+    // not the page turn it is lying on.
+    if (this.pagerClaim(e)) return;
+    let gen = this.navGen;
     if (this.inOp && this.closeFunc) {
       // This block runs when a pointer event is received while a sequence of
       // pgFlip's animator calls is still running running from previous page flip,
@@ -1093,6 +1229,11 @@ class BookLayout extends Layout {
     }
 
     if (await this.whileAlive(super.onDown(e))) return;
+    // A second finger may have arrived while the awaits above were settling, in
+    // which case this navigation was cancelled before it had registered
+    // anything to cancel -- and registering it now would leave a pinch with a
+    // live page-turn listener. (cancelNav bumps the generation.)
+    if (gen != this.navGen) return;
 
     // if empty slot or pager, ignore
     if (e.target.dataset.slot) return; // empty slot
@@ -1154,9 +1295,7 @@ class BookLayout extends Layout {
   }
 
   cancelNav() {
-    if (!this.navMv) return;
-    unlisten(this.navMv);
-    this.navMv = null;
+    if (!super.cancelNav()) return;
     let { pgWidth, pgHeight } = this.cell.geo;
     let toX = this.navAdvancing ? pgWidth : -pgWidth;
     this.closeFunc = () => this.layoutSlots();
@@ -1201,6 +1340,12 @@ class BookLayout extends Layout {
     }
     // mount the given pg (1-based page number) on the given
     // slot (an index into this.slots)
+    // A blocking mount is one this layout is waiting to show (see pgGoTo, which
+    // mounts the two pages it is turning to that way, and the pages behind them
+    // nonblocking): tell the pg, so its pdf can rasterise without queueing
+    // behind pages nobody is looking at yet (see Score.renderGate).
+    let known = this.score.pgs[pn - 1];
+    if (known) known.showing = !nonblocking;
     let pg = await this.whileAlive(this.score.pgUse(pn, nonblocking));
     if (pg) {
       pg.setZoom(this.cell.geo.zoom);
@@ -1643,19 +1788,14 @@ class ScrollLayout extends Layout {
       let [left] = this.snapPns();
       return pnToDiv(left, cursor);
     });
-    Object.assign(this.pagerLeft.elm.style, {
-      left: 0,
-      zIndex: 20,
-    });
+    // The edge each band sits on is a layout setting, applied in buildAux.
+    this.pagerLeft.elm.style.zIndex = 20;
     this.pagerRight = new Pager(this.props.RIGHT, (stash, adjusting, cursor) => {
       if (adjusting) return pnToDiv(Math.min(stash.pn + this.cell.geo.pgShow - 1, this.cell.geo.pgCount), cursor);
       let [, right] = this.snapPns();
       return pnToDiv(right, cursor);
     });
-    Object.assign(this.pagerRight.elm.style, {
-      right: 0,
-      zIndex: 20,
-    });
+    this.pagerRight.elm.style.zIndex = 20;
     this.leftRollShadow.style.background = this.rightRollShadow.style.background =
       `linear-gradient(to ${this.cell.key == "horizontal" ? "right" : "bottom"}, #666b 0, #0000 50%, #8888 100%)`;
   }
@@ -1671,7 +1811,7 @@ class ScrollLayout extends Layout {
     this.animated = animated;
     Object.assign(this, this.cell.stash);
     let { fit, gap, pgSnap, sash, score, pgShow } = this;
-    let { LEFT, RIGHT, TOP, WIDTH, HEIGHT, MAXWIDTH, MAXHEIGHT, INNERWIDTH, INNERHEIGHT } = this.props;
+    let { LEFT, RIGHT, TOP, BOTTOM, WIDTH, HEIGHT, MAXWIDTH, MAXHEIGHT, INNERWIDTH, INNERHEIGHT } = this.props;
     fit = fit.toLowerCase();
     clearChildren(sash);
     // Layout scroll g((eo)metry) in units of css pixels, and "as if"
@@ -1682,7 +1822,18 @@ class ScrollLayout extends Layout {
     gap /= 100; // gap % as fraction
 
 
-    g.rollGirth = this.pnShow == "On" ? Pager.width : Layout.margin;
+    // The bands sit either along the scroll -- in the rolls, where they have
+    // always been -- or across it, and either beside the pages or over them.
+    // Across the scroll they cost height in a horizontal layout and width in a
+    // vertical one, which is the point: a band is 45px of a dimension the fit
+    // may be fighting for, and over the pages it costs nothing at all.
+    let pnAxis = this.pnAxis();
+    // With the numbers off the bands keep the edges they would have had: they
+    // are hidden but still alive, and a hidden band parked across the pages
+    // would scrub the score where a tap means to turn the page.
+    let pnAlong = ((pnAxis ?? this.pnDefaultAxis) == "L-R") == (this.cell.key == "horizontal");
+    g.rollGirth = pnAxis != null && pnAlong && !this.pnOver() ? Pager.width : Layout.margin;
+    g.pnGirth = pnAxis != null && !pnAlong && !this.pnOver() ? Pager.width : 0;
     g.pgCount = this.score.pgs.length;
     g.pgShow = Math.min(pgShow, g.pgCount); // g.pgShow must be <= total page count
     g.pgSnap = Math.min(pgSnap, g.pgCount); // g.pgSnap must be <= total page count
@@ -1692,7 +1843,7 @@ class ScrollLayout extends Layout {
       g.gap = gap * g.pg[WIDTH];
       g.pg[HEIGHT] = score[MAXHEIGHT];
       g.scroll[WIDTH] = g.rollGirth + g.gap + (g.pg[WIDTH] + g.gap) * g.pgShow + g.rollGirth;
-      g.scroll[HEIGHT] = g.gap + g.pg[HEIGHT] + g.gap;
+      g.scroll[HEIGHT] = g.pnGirth + g.gap + g.pg[HEIGHT] + g.gap + g.pnGirth;
     } 
 
     if (fit == "auto" || fit == WIDTH) {
@@ -1700,7 +1851,7 @@ class ScrollLayout extends Layout {
       g.pg[WIDTH] = ((g.scroll[WIDTH] - g.rollGirth - g.rollGirth) / g.pgShow) / (1 + gap + gap/g.pgShow);
       g.gap = gap * g.pg[WIDTH];
       g.pg[HEIGHT] = Math.floor(g.pg[WIDTH] * (score[MAXHEIGHT] / score[MAXWIDTH]));
-      g.scroll[HEIGHT] = g.gap + g.pg[HEIGHT] + g.gap;
+      g.scroll[HEIGHT] = g.pnGirth + g.gap + g.pg[HEIGHT] + g.gap + g.pnGirth;
 
       if(fit == "auto") {
         // Check if layout will fit entirely within window. If not, recalculate with fit = HEIGHT;
@@ -1710,7 +1861,7 @@ class ScrollLayout extends Layout {
         if(layoutWidth > window[INNERWIDTH])
           fit = HEIGHT;
         else {
-          let layoutHeight = Math.round(Layout.margin * 2 + g.pg[HEIGHT] + g.gap * 2);
+          let layoutHeight = Math.round(Layout.margin * 2 + g.pg[HEIGHT] + g.gap * 2 + g.pnGirth * 2);
           if(layoutHeight > window[INNERHEIGHT]) fit = HEIGHT;          
         } 
       }
@@ -1718,7 +1869,7 @@ class ScrollLayout extends Layout {
 
     if (fit == HEIGHT) {
       g.scroll[HEIGHT] = window[INNERHEIGHT] - Layout.margin - Layout.margin;
-      g.pg[HEIGHT] = g.scroll[HEIGHT] / (1 + gap + gap);
+      g.pg[HEIGHT] = (g.scroll[HEIGHT] - g.pnGirth - g.pnGirth) / (1 + gap + gap);
       g.gap = gap * g.pg[HEIGHT];
 
       g.pg[WIDTH] = g.pg[HEIGHT] * score[MAXWIDTH] / score[MAXHEIGHT];
@@ -1740,7 +1891,9 @@ class ScrollLayout extends Layout {
 
     // scroll
     Object.assign(this.layout.style, {
-      [HEIGHT]: toEm(g.scroll[HEIGHT]),
+      // The cross dimension gets the same px-in, em-out treatment as the scroll
+      // dimension below, for the same reason: a band is px and does not scale.
+      [HEIGHT]: `calc(${toEm(g.scroll[HEIGHT])} + ${g.pnGirth * 2}px - ${toEm(g.pnGirth * 2)})`,
       // Not that scroll's WIDTH is set by adding rollGirth in px, then subtracting rollGirth in em's.
       // Initially, they are equal, so contribute nothing, but if/when the scroll is resized through em change,
       // their difference will account for delta between the pagers, which don't scale, and
@@ -1750,10 +1903,10 @@ class ScrollLayout extends Layout {
 
     // frame
     Object.assign(this.frame.style, {
-      [HEIGHT]: "100%",
+      [HEIGHT]: `calc(100% - ${g.pnGirth * 2}px)`,
       [WIDTH]: `calc(100% - ${g.rollGirth * 2}px`,
       [LEFT]: g.rollGirth + "px",
-      [TOP]: 0,
+      [TOP]: g.pnGirth + "px",
     });
 
     // sash — clear any residual transition; LEFT is set by pgGoTo below
@@ -1767,10 +1920,10 @@ class ScrollLayout extends Layout {
     // left/right roll position/size, plus drop shadow "caps" on top/bottom
     for (let roll of [this.leftRoll, this.rightRoll])
       Object.assign(roll.style, {
-        [HEIGHT]: "100%",
+        [HEIGHT]: `calc(100% - ${g.pnGirth * 2}px)`,
         [WIDTH]: g.rollGirth + "px",
         [roll === this.leftRoll ? LEFT : RIGHT]: 0,
-        [TOP]: 0,
+        [TOP]: g.pnGirth + "px",
        
         // box shadow adds caps on top & bottom or rolls — color via --roll-cap-color CSS var
       });
@@ -1782,9 +1935,17 @@ class ScrollLayout extends Layout {
         [WIDTH]: "200%", 
       });
 
-    this.leftRoll.append(this.pagerLeft.elm);
-    this.rightRoll.append(this.pagerRight.elm);
-    let pagerHidden = this.pnShow != "On";
+    // A band along the scroll goes in its roll, as it always has. Across the
+    // scroll it goes in the layout, in the strip reserved above. Over the pages
+    // it goes in the frame, which is the pages' own window -- a roll would clip
+    // it to Layout.margin, and the frame keeps it from straying off the paper.
+    let [pnA, pnB] = pnAlong ? [LEFT, RIGHT] : [TOP, BOTTOM];
+    this.pagerLeft.setPosition(pnA);
+    this.pagerRight.setPosition(pnB);
+    let pnHome = this.pnOver() ? this.frame : pnAlong ? null : this.layout;
+    (pnHome ?? this.leftRoll).append(this.pagerLeft.elm);
+    (pnHome ?? this.rightRoll).append(this.pagerRight.elm);
+    let pagerHidden = pnAxis == null;
     this.pagerLeft.setHidden(pagerHidden, Layout.margin);
     this.pagerRight.setHidden(pagerHidden, Layout.margin);
     this.pagerLeft.build();
@@ -1839,17 +2000,24 @@ class ScrollLayout extends Layout {
   }
 
   async onDown(e) {
+    // see BookLayout.onDown
+    if (this.pagerClaim(e)) return;
+    let gen = this.navGen;
     if (this.inOp) {
       this.commitAnimId++;
       this.inOp = false;
     }
     if (await this.whileAlive(super.onDown(e))) return;
+    // A second finger may have arrived while the awaits above were settling, in
+    // which case this navigation was cancelled before it had registered
+    // anything to cancel -- and registering it now would leave a pinch with a
+    // live page-turn listener. (cancelNav bumps the generation.)
+    if (gen != this.navGen) return;
     let { LEFT, CLIENTX, WIDTH, X, VX } = this.props;
     let sashLimit = this.cell.geo.sashLimit;
     this.sash.setPointerCapture(e.pointerId);
     let frameBox = getBox(this.frame);
     let drag = new Drag(e, { minvelocity: 0.01 });
-    let prevSashStart = this.sashStart ; // Used by pgAlert logic(...)
 
     this.navMv = listen(
       this.frame,
@@ -1860,8 +2028,13 @@ class ScrollLayout extends Layout {
         // sash locations where no Pg is mounted
         if (clientX < frameBox[X] || clientX > frameBox[X] + frameBox[WIDTH]) return;
         // follow the user's move:
+        let prevSash = this.sashStart ;
         this.sashStart = clamp(this.sashStart + clientX - drag.mvBuf.at(-1)[CLIENTX], sashLimit, 0); // drag.mvBuf.at(-1) is previous mv event
-        if(this.sashStart == prevSashStart) // no motion means were at the start or end
+        // No motion means we're at the start or the end -- but only say so once the
+        // finger has really travelled, and only against where the sash was a moment
+        // ago. A tap wanders a pixel or two before it lifts, the clamp swallows that
+        // too, and the alert then fired on a plain tap meant to turn the page.
+        if(this.sashStart == prevSash && drag.moved) // no motion means were at the start or end
         { Layout.pgAlert(drag.mvBuf.at(-1)[CLIENTX] < clientX ? "start" : "end");
           e.taken = true ;
         }
@@ -1871,10 +2044,11 @@ class ScrollLayout extends Layout {
       }).bind(this)
     );
 
-    listen(
+    this.navUp = listen(
       this.frame,
       "pointerup",
       (async (eup) => {
+        this.navUp = null;
         unlisten(this.navMv);
         this.navMv = null;
         drag.up(eup) ;
@@ -1897,9 +2071,7 @@ class ScrollLayout extends Layout {
   }
 
   cancelNav() {
-    if (!this.navMv) return;
-    unlisten(this.navMv);
-    this.navMv = null;
+    if (!super.cancelNav()) return;
     this.pgSnapTo(0);
   }
 
@@ -1931,8 +2103,24 @@ class ScrollLayout extends Layout {
       }
     }
 
+    // pn is about to sit at the leading edge of the scroll, so [pn, pn+pgShow-1]
+    // is what the reader is waiting to see. How far outside that a page is.
+    let last = pn + pgShow - 1;
+    let out = (sashPn) => Math.max(pn - sashPn, sashPn - last, 0);
+
     pgShow = Math.max(pgShow, 4); // ensure at least 4
-    for (let sashPn = pn - pgShow; sashPn <= pn + pgShow + 1; sashPn++) {
+    // Mount the pages on screen first and then outwards. Rasterising a cold page
+    // costs the cpu hundreds of milliseconds, and the whole window of them goes
+    // at once, so the order pages reach Score.renderGate decides how long the
+    // reader waits for the only pages they can see.
+    let order = [];
+    for (let sashPn = pn - pgShow; sashPn <= pn + pgShow + 1; sashPn++) order.push(sashPn);
+    order.sort((a, b) => out(a) - out(b));
+
+    for (let sashPn of order) {
+      let known = this.score.pgs[sashPn - 1];
+      if (known) known.showing = out(sashPn) == 0; // before pgUse: its inflation
+        // may start the render straight away
       let pg = await this.whileAlive(this.score.pgUse(sashPn));
       if (!pg || pg.elm.isConnected) continue; // possibly no page at i, or page already mounted
       pg.setZoom(this.cell.geo.zoom);
@@ -2278,6 +2466,15 @@ class TableLayout extends Layout {
     }
   }
 
+  place() {
+    // buildAux has already applied the fit, and expresses a Height fit as a
+    // font size of its own, so this is the one layout that must keep the size
+    // it was given rather than reset to 1em: only the centring is left.
+    this.elm.style.transition = "unset";   // see Layout.place
+    reflow();
+    Object.assign(this.elm.style, this.centerLT());
+  }
+
   buildAux() {
     // set layout's final position/size, based on this.fit (or the saved pan-zoom from userPz(), if any). Called after
     // build one of 2 locations: 1. all thumbnails 2. user cancelled in-flight thumbnail build
@@ -2298,8 +2495,9 @@ class TableLayout extends Layout {
       if(this.animated)
         animate(this.elm, { left:iconBox.x + "px", top:iconBox.top + "px", fontSize: 0},
           this.centerLT({ fontSize: this.elm.style.fontSize}), `left, top, font-size ${_gs_}ms`);
-      else 
-        this.centerLT({ fontSize: this.elm.style.fontSize}); 
+      // A quiet rebuild -- after a page was cut or pasted, say -- leaves the
+      // layout where the reader put it, as every other layout does, so there is
+      // nothing to do here. refit() centres it through place() instead.
     }
   }
 
@@ -2319,7 +2517,7 @@ class TableLayout extends Layout {
        left:toEm(left),
        top:toEm(top),
     });  
-    if(this.pnShow == "On") {
+    if(this.pnAxis() != null) {   // Table has no bands, so the edges do not apply
       // add a page number elm (or refresh, it elm already has a page number elm) to upper left corner of elm
       let pnElm = elm.getElementsByClassName("TableLayout__pn").item(0) || helm(`<div class="TableLayout__pn"></div>`);
       pnElm.pg = pg; // Pn div is clickable
@@ -2364,6 +2562,8 @@ class TableLayout extends Layout {
       this.active.replaceWith(inactive);
     }
     // Now build the new active pg:
+    let known = this.score.pgs[pn - 1];
+    if (known) known.showing = true; // the one page this layout shows full size
     let pg = elm.pg = await this.whileAlive(this.score.pgUse(pn, false));
     // A null elm means this foreground inflate was aborted — i.e. a newer build
     // superseded this one (rapid layout switching). Bail the stale build; the
@@ -2499,8 +2699,14 @@ class TableLayout extends Layout {
 
 
   async onDown(e) {
+    let gen = this.navGen;
     // The pasting guard (set during an in-flight cut/copy) is checked in super.onDown().
     if (await this.whileAlive(super.onDown(e))) return;
+    // A second finger may have arrived while the awaits above were settling, in
+    // which case this navigation was cancelled before it had registered
+    // anything to cancel -- and registering it now would leave a pinch with a
+    // live page-turn listener. (cancelNav bumps the generation.)
+    if (gen != this.navGen) return;
     this.layout.setPointerCapture(e.pointerId);
     let elm = e.target.closest(".TableLayout__pg");
     if(!elm) return;
@@ -2514,8 +2720,10 @@ e.taken = true ;
           pg.bookmark = null;
           pnElm.style.background = "unset";
         } else pnElm.style.background = pg.bookmark = nextBkColor();
+        // Inside the timer: dispatched on the way in, as it was, it announced a
+        // bookmark that had not been made yet (and none of the one that was).
+        _body_.dispatchEvent(new CustomEvent("BOOKMARK"));
       });
-      _body_.dispatchEvent(new CustomEvent("BOOKMARK"));
     };
 
     // Note: code works around a race condition...if await this.pgGoTo(pn) takes
@@ -2529,7 +2737,8 @@ e.taken = true ;
     this.navMv = null;
     let built = false;
 
-    listen(this.layout, "pointerup", async (eup) => {
+    this.navUp = listen(this.layout, "pointerup", async (eup) => {
+      this.navUp = null;
       this.bMarkTimer.cancel();
       let finale = () => {
         if(!built) delay(1, () => finale());
@@ -2568,9 +2777,7 @@ e.taken = true ;
 
   cancelNav() {
     this.bMarkTimer.cancel();
-    if (!this.navMv) return;
-    unlisten(this.navMv);
-    this.navMv = null;
+    super.cancelNav();
   }
 
   async pgGoTo(pn) {
@@ -2674,6 +2881,12 @@ class Pager {
 
   static id = 0;
   static width = 45 / _dvPxRt_; // px
+  // Shortest a bookmark tab is drawn. A tab's own page is worth 1-2px of band in
+  // a long score, which is neither visible nor catchable, and the tab is the
+  // only exact target the band has.
+  static tabMin = 10 / _dvPxRt_; // px
+  static tabReach = 20 / _dvPxRt_; // px of band one tab answers for, at the least
+  static reach = 15 / _dvPxRt_; // px either lane answers for beyond the band's edge
 
   elm = helm(
     `<div data-tag="pager" class="Pager notranslate" translate="no">
@@ -2685,15 +2898,7 @@ class Pager {
     // position is one of "left", "right", "top", "bottom"
     Object.assign(this, dataIndex("tag", this.elm));
     this.formatFunc = formatFunc;
-    this.position = position;
-    this.props = ["left", "right"].includes(position) ? NORMAL_PROPS : ORTHO_PROPS;
-    let { WIDTH, HEIGHT } = this.props;
-    this.pager.style[WIDTH] = this.cursor.style[WIDTH] = this.cursor.style[HEIGHT] = Pager.width + "px";
-    this.pager.style[HEIGHT] = "100%";
-    if (position == "left") this.pager.style.left = 0;
-    else if (position == "right") this.pager.style.right = 0;
-    else if (position == "top") this.pager.style.top = 0;
-    else if (position == "bottom") this.pager.style.bottom = 0;
+    this.setPosition(position);
     this.bMarkTimer = new Schedule();
     this.cursorBackground = cssIndex("Pager", ".Pager__cursor", "background-color");
     this.ptrMsgBackground = cssIndex("ptrMsg", ".ptrMsg", "background-color");
@@ -2714,6 +2919,27 @@ class Pager {
     // Called when containing layout is about to be removed from dom.
     this.resizeObserver.disconnect();
     unlisten(this.pnListener, this.bookmarkListener, this.pointerListener);
+  }
+
+  setPosition(position) {
+    // Which edge the band sits on, and so which way it runs: "left"/"right" give
+    // a tall band whose numbers travel down it, "top"/"bottom" a wide one whose
+    // numbers travel across. The reader can change the edge from the Layout
+    // panel without reopening the score, so this is called on every build.
+    // @param position one of "left", "right", "top", "bottom"
+    this.position = position;
+    this.props = ["left", "right"].includes(position) ? NORMAL_PROPS : ORTHO_PROPS;
+    let { WIDTH, HEIGHT, TOP } = this.props;
+    // Every edge is named, not just the one in use: .Pager's own top:0 would
+    // otherwise win over an inline bottom:0 (an over-constrained box ignores
+    // bottom), leaving a band meant for the foot of the page at its head. The
+    // sizes go too, because buildCursor() sizes the cursor along the old axis.
+    Object.assign(this.pager.style, { top: "auto", bottom: "auto", left: "auto", right: "auto" });
+    Object.assign(this.cursor.style, { width: "", height: "", top: "", left: "" });
+    this.pager.style[WIDTH] = this.cursor.style[WIDTH] = this.cursor.style[HEIGHT] = Pager.width + "px";
+    this.pager.style[HEIGHT] = "100%";
+    this.pager.style[TOP] = 0;    // the band runs the full length of its edge
+    this.pager.style[position] = 0;
   }
 
   setHidden(hidden, narrowWidthPx) {
@@ -2747,7 +2973,16 @@ class Pager {
     let { LEFT, HEIGHT, TOP, WIDTH } = this.props;
     for (let elm of [...this.elm.children]) if (elm.dataset.tag == "bookmark") elm.remove();
     let pgCount = _score_.pgs.length;
-    let pgSpan = 100 / pgCount;
+    // A tab marks the stretch of band that reaches its page, which is not the
+    // same as its share of the band: the cursor is a square that travels
+    // between the ends, so the first page's stretch starts half a cursor in and
+    // the whole travel is a cursor shorter than the band. Drawn as a plain
+    // fraction of the band a tab sat up to half a cursor away from where a
+    // finger has to land to reach it -- twenty pages out in a long score. Left
+    // as a calc() so that rescaling the layout needs no rebuild, as with the
+    // cursor's own position.
+    let span = `(100% - ${Pager.width}px)`;
+    let length = `max(${span} / ${pgCount}, ${Pager.tabMin}px)`;
     // bookmarks for positions right and bottom are on opposite side of those for left and top
     let leftPercent = ["left", "top"].includes(this.position) ? 70 : -10;
 
@@ -2755,9 +2990,10 @@ class Pager {
       if(!pg.bookmark) return;
       let elm = helm(
         `<div data-tag="bookmark" class="Pager__bookmark"
-         style="${TOP}:${i * pgSpan}%;
-           ${HEIGHT}:${pgSpan}%;${WIDTH}:40%;${LEFT}:${leftPercent}%"></div>`
+         style="${TOP}:calc(${Pager.width / 2}px + ${span} * ${(i + 0.5) / pgCount} - ${length} / 2);
+           ${HEIGHT}:${length};${WIDTH}:40%;${LEFT}:${leftPercent}%"></div>`
       );
+      elm.pn = i + 1; // the page this tab is a target for
       elm.style.backgroundColor =
         typeof pg.bookmark == "string" && CSS.supports("color", pg.bookmark)
           ? pg.bookmark : "#ff0000";
@@ -2765,8 +3001,77 @@ class Pager {
     });
   }
 
-  onDown(e) {
+  tabClaims(box) {
+    // Which stretch of band each tab answers for, in client coordinates along
+    // it. A tab's own page is a pixel or two of a long band, so each claims a
+    // finger's worth, and neighbours divide the ground between them at the
+    // midpoint so that no point ever belongs to two.
+    let { HEIGHT, Y } = this.props;
+    let pgCount = _score_.pgs.length;
+    let travel = box[HEIGHT] - Pager.width;
+    let marks = [];
+    _score_.pgs.forEach((pg, i) => {
+      // The middle of the page's own stretch: where buildBookmarks() draws it.
+      if (pg.bookmark) marks.push({ pn: i + 1, at: box[Y] + Pager.width / 2 + (travel * (i + 0.5)) / pgCount });
+    });
+    let reach = Math.max(travel / pgCount, Pager.tabReach) / 2;
+    return marks.map(({ pn, at }, i) => ({
+      pn,
+      from: Math.max(at - reach, i > 0 ? (marks[i - 1].at + at) / 2 : -Infinity),
+      to: Math.min(at + reach, i + 1 < marks.length ? (at + marks[i + 1].at) / 2 : Infinity),
+    }));
+  }
+
+  claim(e) {
+    // What a finger at this point is asking the band for: a tab, as {pn}, or
+    // "scrub" to mean the page its position stands for, or null for nothing to
+    // do with the band at all.
+    //
+    // Worked out by arithmetic rather than left to whichever element the finger
+    // landed on, because both of the things a band is asked for want more room
+    // than the band has. So each lane reaches a little past the band, on the
+    // side that costs least: tabs over the page they mark, where a tab is drawn
+    // overhanging anyway, and scrubbing out into whatever margin the window has
+    // to spare, because a band's outer edge is usually the screen's. Arithmetic
+    // also reaches where an element cannot: a tab that the roll it sits in
+    // clips, or that the cursor is drawn over.
+    //
+    // Where no tab is near, the whole thickness of the band means the position,
+    // exactly as it did before there were lanes -- so a tab never costs the
+    // reader the pages around it.
+    if (!_score_ || this.pager.classList.contains("Pager--hidden")) return null;
+    let { WIDTH, HEIGHT, X, Y, CLIENTX, CLIENTY, INNERWIDTH } = this.props;
+    let box = getBox(this.pager);
+    let [along, across] = [e[CLIENTY], e[CLIENTX]];
+    if (along < box[Y] || along > box[Y] + box[HEIGHT]) return null;
+    // Tabs are drawn on the band's inner flank, overhanging the page; it is the
+    // outer flank that has the window's margin behind it.
+    let inward = ["left", "top"].includes(this.position) ? 1 : -1;
+    let beyond = (dir) => (across - box[X] - (dir > 0 ? box[WIDTH] : 0)) * dir;
+    if (beyond(inward) <= Pager.reach && (across - box[X] - box[WIDTH] / 2) * inward > 0) {
+      let tab = this.tabClaims(box).find((claim) => along >= claim.from && along <= claim.to);
+      if (tab) return tab;
+    }
+    let spare = inward > 0 ? box[X] : window[INNERWIDTH] - box[X] - box[WIDTH];
+    if (beyond(inward) <= 0 && beyond(-inward) <= Math.min(Pager.reach, spare)) return "scrub";
+    return null;
+  }
+
+  tryClaim(e) {
+    // Offer the band a press that landed near it rather than on it.
+    // @return whether the band took the press.
+    if (e.taken || !this.claim(e)) return false;
+    this.onDown(e, true);
+    return true;
+  }
+
+  onDown(e, outside = false) {
     e.taken = true ;
+    // A band down the sides scrubs the way the background's own swipe moves
+    // (see Gestures.watch), so it cannot share the strip of margin it answers
+    // for: one long scrub would park the menu as well. Bands across the ends
+    // scrub the other way, and leave the swipe to the background.
+    if (outside && this.props === NORMAL_PROPS) e.swipeTaken = true;
     e.stopImmediatePropagation(); // don't let event propagate to the layout
     let drag = new Drag(e) ;
     let { TOP, WIDTH, HEIGHT, CLIENTX, CLIENTY, X, Y } = this.props;
@@ -2774,8 +3079,31 @@ class Pager {
     let pgCount = _score_.pgs.length;
     let cursorBox = getBox(cursor);
     let pagerBox = getBox(pager);
-    pager.setPointerCapture(e.pointerId);
+    // A press from outside leaves the capture where it is -- the background has
+    // it, and the move and up listeners below are on the body in any case.
+    if (!outside) pager.setPointerCapture(e.pointerId);
     cursor.classList.add("Pager__cursor-active");
+
+    // A tab is an exact target: a finger in one's reach aims at the page it
+    // marks, whatever that page is worth in pixels of band.
+    let claimed = this.claim(e);
+    let tab = claimed && claimed != "scrub" ? claimed : null;
+    // The page the band was showing before this finger landed. A long press
+    // works on that page, not on the one under the finger: a band is a pixel or
+    // two per page in a long score, so the page under the finger is a guess,
+    // and a reader asking for a bookmark has always meant the page being read.
+    let pnAtDown = _score_.numbers.pn;
+    let travel = pagerBox[HEIGHT] - cursorBox[HEIGHT];
+    // Only a press on a tab, or near enough the cursor to be pointing at it, is
+    // a bookmark press. Further off it is a finger that meant to tap a distant
+    // page and lingered, and it stays a tap -- silently bookmarking a page the
+    // reader never asked about is worse than a slow page turn. A hidden band
+    // draws neither cursor nor tabs, so there is nothing there to aim at.
+    let bMark =
+      !pager.classList.contains("Pager--hidden") &&
+      (!!tab ||
+        Math.abs(e[CLIENTY] - cursorBox[Y] - cursorBox[HEIGHT] / 2) <= Pager.width * 1.5);
+    let bMarked = false; // a long press consumes the gesture: see pointerup
 
     // display:block (overriding .floatingMsg's flex): the page number is drawn with
     // zero-advance Bravura time-sig glyphs whose ink overflows the box; iOS/WebKit
@@ -2783,7 +3111,9 @@ class Pager {
     // paints it (same as the cursor, which is why the cursor renders fine).
     let ptrDiv = ptrMsg(e, (e,div) => this.formatFunc(_score_.numbers, true, div) && false, `width: ${cursor.style.width};display:block;text-align:center;`);
     let prevPos = e[CLIENTY];
-    let cursorTop = clamp(e[CLIENTY] - pagerBox[Y] - cursorBox[HEIGHT] / 2, 0, pagerBox[HEIGHT] - cursorBox[HEIGHT]);
+    let cursorTop = tab
+      ? ((tab.pn - 0.5) * travel) / pgCount // the middle of the page's own stretch
+      : clamp(e[CLIENTY] - pagerBox[Y] - cursorBox[HEIGHT] / 2, 0, travel);
     let cursorOffset = pagerBox[Y] + cursorBox.height ;
 
     let setCursor = (clientPos, delta) => {
@@ -2792,10 +3122,10 @@ class Pager {
       let t = Math.max(0, delta / pagerBox[WIDTH] - 0.5);
       let unitsPerPx = pgCount / pagerBox[HEIGHT];
       let sensitivity = 1 + t * unitsPerPx * _sliderPrecision_;
-      cursorTop = clamp(cursorTop + dPos / sensitivity, 0, pagerBox[HEIGHT] - cursorBox[HEIGHT]);
+      cursorTop = clamp(cursorTop + dPos / sensitivity, 0, travel);
       cursor.style[TOP] = cursorTop + "px";
       // pn calculation will equal pgCount at last pixel of slider, so we need Math.min
-      _score_.numbers.pn = Math.min(Math.floor(pgCount * cursorTop / (pagerBox[HEIGHT] - cursorBox[HEIGHT])) + 1, pgCount);
+      _score_.numbers.pn = Math.min(Math.floor(pgCount * cursorTop / travel) + 1, pgCount);
       // are we at a bookmark? 
       let bkCl = _score_.pgs[_score_.numbers.pn -1].bookmark;
       cursor.style.color = bkCl || "";
@@ -2807,45 +3137,68 @@ class Pager {
     };
 
     setCursor(e[CLIENTY], 0) ;
+    // The readout is built before the cursor is placed, and only redrawn once
+    // the finger moves, so a press that stays put was announcing the page we
+    // came from rather than the one it is about to open.
+    this.formatFunc(_score_.numbers, true, ptrDiv);
 
-    this.bMarkTimer.run(_gs_, () => {
-      let pn = _score_.numbers.pn;
-      let pg = _score_.pgs[pn - 1];
-      if (pg.bookmark) {
-        pg.bookmark = null;
-        cursor.style.color = "";
-        ptrDiv.style.backgroundColor = "";
-        ptrDiv.style.color = "";
-      }
-      else {
-        let bkCl = pg.bookmark = nextBkColor();
-        cursor.style.color = bkCl;
-        ptrDiv.style.backgroundColor = bkCl;
-        ptrDiv.style.color = contrastColor(bkCl);
-      }
+    if (bMark) this.bMarkTimer.run(_gs_, () => {
+      let pg = _score_.pgs[(tab ? tab.pn : pnAtDown) - 1];
+      let bkCl = (pg.bookmark = pg.bookmark ? null : nextBkColor());
+      ptrDiv.style.backgroundColor = bkCl || "";
+      ptrDiv.style.color = bkCl ? contrastColor(bkCl) : "";
+      // The press was a bookmark, not a scrub: hand the page back and take the
+      // gesture with it, so that lifting the finger does not then travel to
+      // wherever it happened to be resting.
+      bMarked = true;
+      this.give(pnAtDown);
+      this.formatFunc(_score_.numbers, true, ptrDiv);
       _body_.dispatchEvent(new CustomEvent("BOOKMARK"));
     });
 
-    let mv = listen(pager, "pointermove", (emv) => {
+    // On the body, and filtered by pointer, rather than on the band: a press
+    // from outside leaves the capture with the background, which would then
+    // keep these from the band altogether.
+    let mine = (ev) => ev.pointerId == e.pointerId;
+    let mv = listen(_body_, "pointermove", (emv) => {
+      if (!mine(emv)) return;
       drag.mv(emv) ;
       if(drag.moved) this.bMarkTimer.cancel();
       setCursor(emv[CLIENTY], Math.abs(emv[CLIENTX] - cursorBox[X] - cursorBox[WIDTH]/2));
-    });
+    }, { capture: true });
 
-    listen(pager, "pointerup", (eup) => {
-        setCursor(eup[CLIENTY], Math.abs(eup[CLIENTX] - cursorBox[X] - cursorBox[WIDTH]/2));
-        unlisten(mv);
-
-
+    let up = listen(_body_, "pointerup", (eup) => {
+        if (!mine(eup)) return;
+        unlisten(mv, up);
         this.cursor.classList.remove("Pager__cursor-active");
         this.bMarkTimer.cancel();
+        if (bMarked) return; // the long press has had this gesture, page and all
+        // A press that came from the margin may still turn out to be the
+        // background's own swipe, which is settled at the end by how far the
+        // finger went. Where the band left that gesture to the background (see
+        // swipeTaken above), the swipe's reading of it wins.
+        if (outside && !e.swipeTaken && Math.abs(eup.clientY - e.clientY) > _swipeDelta_())
+          return this.give(pnAtDown);
+        setCursor(eup[CLIENTY], Math.abs(eup[CLIENTX] - cursorBox[X] - cursorBox[WIDTH]/2));
         this.buildCursor();
         _body_.dispatchEvent(new CustomEvent("NUMBERS", { detail: {sender:this, tag:"pn" }}));
       },
-      { once: true }
+      { capture: true }
     );
   }
+
+  give(pn) {
+    // Hand a page back: the gesture turned out not to be a scrub after all, so
+    // the page it was reading on the way past is not the reader's answer.
+    _score_.numbers.pn = pn;
+    this.buildCursor(); // returns the cursor, and its colour, to that page
+  }
 }
+
+// Exposed for the test suite, as file.js exposes its own classes: a layout
+// needs a score to exist, so the tests that drive gestures against one stand in
+// a stub here instead.
+window._Layout_ = Layout;
 
 // Per-theme layout CSS vars (recto/verso backgrounds, border, gradient overlay, roll cap color)
 let rectoWarm = "url('data:image/svg+xml;base64,ICAgICAgPHN2ZyB3aWR0aD0nM2VtJyBoZWlnaHQ9JzNlbScgdmlld0JveD0nMCAwIDEwMCAxMDAnIHhtbG5zPSdodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2Zyc+CiAgICAgICAgPGZpbHRlciBpZD0ncGFwZXJGaWx0ZXInPgogICAgICAgICAgPGZlVHVyYnVsZW5jZSB0eXBlPSJmcmFjdGFsTm9pc2UiIGJhc2VGcmVxdWVuY3k9JzAuNScgCiAgICAgICAgICAgcmVzdWx0PSdub2lzZScgbnVtT2N0YXZlcz0iNCIgc3RpdGNoVGlsZXM9J3N0aXRjaCcgc2VlZD0nNDInLz4KICAgICAgICAgIDxmZUNvbG9yTWF0cml4IGluPSdub2lzZScgdHlwZT0nc2F0dXJhdGUnIHZhbHVlcz0nMCcvPgogICAgICAgICAgPGZlQ29tcG9uZW50VHJhbnNmZXI+CiAgICAgICAgICAgIDxmZUZ1bmNBIHR5cGU9J2xpbmVhcicgc2xvcGU9JzAuMycgaW50ZXJjZXB0PScwLjUnLz4KICAgICAgICAgICAgPC9mZUNvbXBvbmVudFRyYW5zZmVyPgogICAgICAgICAgICA8ZmVDb21wb3NpdGUgaW4yPSdTb3VyY2VHcmFwaGljJyBvcGVyYXRvcj0nbXVsdGlwbHknIHJlc3VsdD0ndGV4dHVyZWQnLz4KICAgICAgICAgIDwvZmlsdGVyPiAgCiAgICAgICAgICA8cmVjdCB3aWR0aD0nMTAwJScgaGVpZ2h0PScxMDAlJyBmaWxsPScjQ0Q4NTNGJyBmaWx0ZXI9J3VybCgjcGFwZXJGaWx0ZXIpJy8+CiAgICAgICAgPC9zdmc+')";

@@ -44,6 +44,16 @@ let err = (call, msg) => {
   throw new Error(msg, { cause: "fileSrc" });
 };
 
+/**
+   Throws a provider-side failure that the user should be shown. errDialog only
+   puts error.message in the dialog for cause "fileSrc"; anything else is
+   replaced by "Details in console", which is no help on a tablet.
+**/
+let srcErr = (msg) => {
+  console.warn(`**** Podium FileSrc error: ${msg}`);
+  throw new Error(msg, { cause: "fileSrc" });
+};
+
 let errDialog = (error, msg) => {
   // Craft an error dialog, given an exception variable and a msg.
   // error.message is plain text (it may quote external sources), so it's escaped: newlines become line breaks.
@@ -55,7 +65,11 @@ let errDialog = (error, msg) => {
   else if (error.cause == "fileSrc") dialog(`<em>${msg}</em><br><br><strong>${message()}</strong>`);
   else {
     console.error(`*** Unexpected Podium Error:`, error);
-    dialog(`<em>Unexpected Error</em><br><br><strong>${msg}</strong><br><br>Details in console.`);
+    // The reason goes in the dialog, not only the console. On a tablet the
+    // console costs a USB cable and a desktop machine, so "Details in console"
+    // is where diagnosis stops -- which is exactly where it stopped.
+    dialog(`<em>Unexpected Error</em><br><br><strong>${msg}</strong><br><br>` +
+           `<span style="font-size:.8em">${escapeHtml(error.name)}: ${message()}</span>`);
   }
 };
 
@@ -566,7 +580,12 @@ class CachedSrc extends FileSrc {
     authUrl = null; // subclass defined
     tokenUrl = null; // subclass defined
 
-    redirectUri = `${location.origin}/podauth.html`;
+    // Resolved against the page, not the origin, so Podium works when it is
+    // served from a subdirectory. Each provider's console must list this exact
+    // URI, so moving the directory means re-registering it. Google Drive is the
+    // exception: its web path uses the GIS token client, which is authorised by
+    // JavaScript origin and so is unaffected by the path.
+    redirectUri = new URL("podauth.html", location.href).href;
     tokens = null;
     refreshExpiry = 90 * 24 * 60 * 60; // default refresh token expiry in seconds
     authTimeout = 180; // max time in seconds for user to complete authorization
@@ -1707,9 +1726,24 @@ class PCloudOAuthAuth {
   apiHost = null;
   accessToken = null;
   sessionRestored = false;
+  // getzip rejects an OAuth access_token with "Log in required", and an OAuth
+  // token cannot be exchanged for a session token, so OAuth can only reach file
+  // contents through a content host. That works here because the extension's
+  // host_permissions bypass CORS. See PCloudDirectAuth for the other half.
+  contentAccess = "link";
+
+  /**
+     OAuth needs chrome.identity to run the redirect, and it can only reach file
+     contents through a content host, which needs host_permissions to escape
+     CORS. Both belong to the extension, so outside it OAuth is not an option at
+     all — not merely a slower one.
+  **/
+  static get available() {
+    return Boolean(window.chrome && chrome.runtime?.id && chrome.identity?.launchWebAuthFlow);
+  }
 
   async restoreSession() {
-    if (this.sessionRestored) return;
+    if (this.sessionRestored || !PCloudOAuthAuth.available) return;
     this.sessionRestored = true;
     let saved = (await chrome.storage.session.get("pcloud-oauth"))["pcloud-oauth"];
     if (saved?.accessToken && PCLOUD_API_HOSTS.has(saved.apiHost)) {
@@ -1770,6 +1804,131 @@ class PCloudOAuthAuth {
   }
 }
 
+/** Resolves one IDBRequest. */
+function idbRequest(request) {
+  return new Promise((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+/**
+ * Remembers the pCloud password for as long as the extension is running.
+ * chrome.storage.session is memory-only and is cleared when Chrome exits.
+ */
+class ExtensionPasswordStore {
+  expiry = "until Chrome exits";
+
+  async get() {
+    return (await chrome.storage.session.get("pcloud-password"))["pcloud-password"] || null;
+  }
+
+  async set(password) {
+    await chrome.storage.session.set({ "pcloud-password": password });
+  }
+
+  async clear() {
+    await chrome.storage.session.remove("pcloud-password");
+  }
+}
+
+/**
+ * Remembers the pCloud password for the tab's session, outside the extension.
+ *
+ * Holding it in a variable would not do: Android Chrome discards background
+ * tabs and reloads them when they come back, which would mean re-entering the
+ * password mid-rehearsal. So the ciphertext goes to sessionStorage, which
+ * survives a reload of the same tab and dies with it, and the AES-GCM key goes
+ * to IndexedDB as a non-extractable CryptoKey. Structured clone preserves
+ * non-extractability, so the key material is never readable from JavaScript —
+ * not even by this code, which can only ask the key to decrypt.
+ *
+ * That is worth being honest about: it is no defence against code running in
+ * this page, which can simply ask for a decryption. What it buys is that the
+ * password does not appear in a heap snapshot, a crash dump, or a look at
+ * sessionStorage.
+ *
+ * Keys are kept under a per-session id so that two tabs do not invalidate each
+ * other's ciphertext, and a key whose session is gone is useless on its own:
+ * without the ciphertext in that tab's sessionStorage it decrypts nothing. They
+ * are swept anyway once they are a day old.
+ */
+class WebPasswordStore {
+  static dbName = "podium-pcloud";
+  static storeName = "session-keys";
+  static itemName = "pcloud-password";
+  static keyLifetime = 24 * 60 * 60 * 1000;
+  expiry = "until this tab is closed";
+
+  async withStore(mode, run) {
+    let open = indexedDB.open(WebPasswordStore.dbName, 1);
+    open.onupgradeneeded = () => open.result.createObjectStore(WebPasswordStore.storeName);
+    let db = await idbRequest(open);
+    try {
+      return await run(db.transaction(WebPasswordStore.storeName, mode).objectStore(WebPasswordStore.storeName));
+    } finally {
+      db.close();
+    }
+  }
+
+  /** Drops keys left behind by sessions that ended without clearing up. */
+  async sweep() {
+    await this.withStore("readwrite", async store => {
+      for (let id of await idbRequest(store.getAllKeys())) {
+        let record = await idbRequest(store.get(id));
+        if (!record || Date.now() - record.created > WebPasswordStore.keyLifetime)
+          await idbRequest(store.delete(id));
+      }
+    });
+  }
+
+  async get() {
+    let saved = sessionStorage.getItem(WebPasswordStore.itemName);
+    if (!saved) {
+      // This tab has nothing to decrypt, but a key it did not write may belong
+      // to another tab that is still open, so only the aged ones can go.
+      await this.sweep();
+      return null;
+    }
+    let { id, iv, data } = JSON.parse(saved);
+    let record = await this.withStore("readonly", store => idbRequest(store.get(id)));
+    if (!record) {
+      sessionStorage.removeItem(WebPasswordStore.itemName);
+      return null;
+    }
+    try {
+      let plain = await crypto.subtle.decrypt(
+        { name: "AES-GCM", iv: Uint8Array.from(iv) }, record.key, Uint8Array.from(data));
+      return new TextDecoder().decode(plain);
+    } catch (_error) {
+      // Tampered with, or paired with the wrong key. Either way, ask again.
+      await this.clear();
+      return null;
+    }
+  }
+
+  async set(password) {
+    await this.clear();
+    // Not extractable: the key can decrypt but can never be read back out.
+    let key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"]);
+    let iv = crypto.getRandomValues(new Uint8Array(12));
+    let data = new Uint8Array(await crypto.subtle.encrypt(
+      { name: "AES-GCM", iv }, key, new TextEncoder().encode(password)));
+    let id = crypto.randomUUID();
+    await this.withStore("readwrite", store => idbRequest(store.put({ key, created: Date.now() }, id)));
+    sessionStorage.setItem(WebPasswordStore.itemName,
+      JSON.stringify({ id, iv: [...iv], data: [...data] }));
+  }
+
+  async clear() {
+    let saved = sessionStorage.getItem(WebPasswordStore.itemName);
+    sessionStorage.removeItem(WebPasswordStore.itemName);
+    if (!saved) return;
+    let { id } = JSON.parse(saved);
+    await this.withStore("readwrite", store => idbRequest(store.delete(id)));
+  }
+}
+
 /**
  * Direct pCloud authentication retained as a personal fallback.
  *
@@ -1785,6 +1944,23 @@ class PCloudDirectAuth {
   email = null;
   password = null;
   sessionRestored = false;
+  // Per-request digest authentication reaches file contents through getzip,
+  // which answers from api.pcloud.com itself. The content host getfilelink hands
+  // out sends no Access-Control-Allow-Origin, and from a deployed web origin the
+  // call is refused outright with "Invalid link referer" (result 7010), so this
+  // is the only path that works outside the extension.
+  contentAccess = "zip";
+  // chrome.storage.session is the better store where it exists, being outside
+  // the page altogether. See WebPasswordStore for what replaces it.
+  store = window.chrome && chrome.runtime?.id && chrome.storage?.session
+    ? new ExtensionPasswordStore() : new WebPasswordStore();
+  // getdigest answers with an expiry about 30 s out and pCloud accepts the same
+  // digest until then. Signing every request separately measured 2.01x the time
+  // of reusing one: exactly the cost of a second round trip on every operation.
+  // The expiry is the server's and says nothing about this clock, so re-sign
+  // well before it.
+  static digestMargin = 10000;
+  digest = null;
 
   async sha1Hex(value) {
     let bytes = typeof value == "string" ? new TextEncoder().encode(value) : value;
@@ -1792,14 +1968,31 @@ class PCloudDirectAuth {
     return Array.from(digest, byte => byte.toString(16).padStart(2, "0")).join("");
   }
 
+  /** Returns a digest for this.apiHost, reusing the last one while it lasts. */
+  async currentDigest() {
+    if (this.digest?.apiHost == this.apiHost &&
+        this.digest.expires - Date.now() > PCloudDirectAuth.digestMargin)
+      return this.digest.value;
+    let response = await fetch(`https://${this.apiHost}/getdigest`, { referrerPolicy: "no-referrer" });
+    let payload = await response.json();
+    if (!response.ok || payload.result !== 0 || !payload.digest)
+      srcErr(`pCloud getdigest failed: ${payload.error || response.status}`);
+    // An unreadable expiry must not be treated as a long one: expire it now, so
+    // the digest is used for this request and never reused.
+    let expires = Date.parse(payload.expires);
+    this.digest = {
+      apiHost: this.apiHost,
+      value: payload.digest,
+      expires: Number.isFinite(expires) ? expires : Date.now(),
+    };
+    return payload.digest;
+  }
+
   async authenticate() {
-    if (!(window.chrome && chrome.runtime?.id))
-      throw new Error("pCloud is available only in the Podium browser extension.");
     if (!this.sessionRestored) {
       this.sessionRestored = true;
       this.email = localStorage.getItem("pcloud-email") || null;
-      let saved = await chrome.storage.session.get("pcloud-password");
-      this.password = saved["pcloud-password"] || null;
+      this.password = await this.store.get();
     }
     if (this.email && this.password) return;
 
@@ -1813,8 +2006,8 @@ class PCloudDirectAuth {
          <input is="pod-input" type="email" autocomplete="username" class="dialog__textInput" data-tag="email" placeholder="pCloud email"><br><br>
          <input is="pod-input" type="password" autocomplete="current-password" class="dialog__textInput" data-tag="password" placeholder="pCloud password"><br><br>
          <label><input type="checkbox" data-tag="remember" checked>
-           Remember password until Chrome exits</label><br><br>
-         <small>The email address is remembered on this device. The password is kept in memory only.</small>`,
+           Remember password ${this.store.expiry}</label><br><br>
+         <small>The email address is remembered on this device. The password is kept in memory only, encrypted with a key that cannot be read back out.</small>`,
         { Connect: { svg: "pCloud" }, Cancel: { svg: "Cancel" } },
         async (_event, _prop, tag, args) => {
           if (tag == "Cancel") {
@@ -1832,10 +2025,8 @@ class PCloudDirectAuth {
           this.apiHost = apiHost;
           localStorage.setItem("pcloud-api-host", apiHost);
           localStorage.setItem("pcloud-email", email);
-          if (inputs.remember.checked)
-            await chrome.storage.session.set({ "pcloud-password": password });
-          else
-            await chrome.storage.session.remove("pcloud-password");
+          if (inputs.remember.checked) await this.store.set(password);
+          else await this.store.clear();
           args.close();
           resolve();
         }
@@ -1851,17 +2042,14 @@ class PCloudDirectAuth {
 
   async requestAuth() {
     await this.authenticate();
-    let response = await fetch(`https://${this.apiHost}/getdigest`, { referrerPolicy: "no-referrer" });
-    let payload = await response.json();
-    if (!response.ok || payload.result !== 0 || !payload.digest)
-      throw new Error(`pCloud getdigest failed: ${payload.error || response.status}`);
+    let digest = await this.currentDigest();
     let usernameHash = await this.sha1Hex(this.email);
-    let material = new TextEncoder().encode(this.password + usernameHash + payload.digest);
+    let material = new TextEncoder().encode(this.password + usernameHash + digest);
     return {
       apiHost: this.apiHost,
       params: {
         username: this.email,
-        digest: payload.digest,
+        digest,
         passworddigest: await this.sha1Hex(material),
       },
       headers: {},
@@ -1870,8 +2058,9 @@ class PCloudDirectAuth {
 
   async forget() {
     this.email = this.password = null;
+    this.digest = null;
     localStorage.removeItem("pcloud-email");
-    await chrome.storage.session.remove("pcloud-password");
+    await this.store.clear();
   }
 }
 
@@ -1883,6 +2072,11 @@ class PCloudAuth {
 
   async authenticate() {
     if (this.active) return this.active.authenticate();
+    // With no OAuth to choose, there is nothing to ask about.
+    if (!PCloudOAuthAuth.available) {
+      this.active = this.direct;
+      return this.active.authenticate();
+    }
     await this.oauth.restoreSession();
     if (this.oauth.accessToken) {
       this.active = this.oauth;
@@ -1925,10 +2119,73 @@ class PCloudAuth {
     return this.active.requestAuth();
   }
 
+  /**
+     How file contents can be read, which depends on the mechanism rather than
+     the platform: only an authenticated mechanism knows. Callers must
+     authenticate() first.
+  **/
+  get contentAccess() {
+    return this.active?.contentAccess;
+  }
+
   async forget() {
     this.active = null;
-    await Promise.all([this.oauth.forget(), this.direct.forget()]);
+    await Promise.all([
+      PCloudOAuthAuth.available ? this.oauth.forget() : null,
+      this.direct.forget(),
+    ]);
   }
+}
+
+/**
+   Locates the end-of-central-directory record, which pCloud writes last when it
+   streams an archive. The central directory is the only place the entry sizes
+   are reliable: a streamed local header may defer them to a data descriptor and
+   leave its own size fields zero.
+**/
+function zipEndOfCentralDirectory(view) {
+  let limit = Math.max(0, view.byteLength - 22 - 0xffff);
+  for (let offset = view.byteLength - 22; offset >= limit; offset--)
+    if (view.getUint32(offset, true) === 0x06054b50) return offset;
+  srcErr("The pCloud archive has no end-of-central-directory record.");
+}
+
+/**
+   Extracts the only member of a single-member archive, as pCloud's getzip
+   returns it. Scores are stored rather than deflated (a PDF does not compress),
+   so the common path costs no decompression and a few bytes of overhead.
+**/
+async function unzipSingleEntry(archive) {
+  if (archive[0] !== 0x50 || archive[1] !== 0x4b)
+    srcErr(`pCloud returned ${archive.length} bytes without a zip signature.`);
+  let view = new DataView(archive.buffer, archive.byteOffset, archive.byteLength);
+  let end = zipEndOfCentralDirectory(view);
+  if (!view.getUint16(end + 10, true)) srcErr("The pCloud archive is empty.");
+  let directory = view.getUint32(end + 16, true);
+  if (view.getUint32(directory, true) !== 0x02014b50)
+    srcErr("The pCloud archive's central directory is malformed.");
+
+  let method = view.getUint16(directory + 10, true);
+  let compressedSize = view.getUint32(directory + 20, true);
+  let local = view.getUint32(directory + 42, true);
+  if (compressedSize === 0xffffffff || local === 0xffffffff)
+    srcErr("The pCloud archive uses Zip64 fields Podium does not read.");
+  if (view.getUint32(local, true) !== 0x04034b50)
+    srcErr("The pCloud archive's local file header is malformed.");
+  if (method !== 0 && method !== 8)
+    srcErr(`The pCloud archive uses compression method ${method}, which Podium does not read.`);
+
+  // The local header's name and extra fields may differ in length from the
+  // central directory's, so the data offset must come from the local header.
+  let data = local + 30 + view.getUint16(local + 26, true) + view.getUint16(local + 28, true);
+  let stored = archive.subarray(data, data + compressedSize);
+  if (method === 0) {
+    // A stored member is a view into the archive. Copy it out so the caller owns
+    // the result and the archive can be collected.
+    return stored.slice().buffer;
+  }
+  let stream = new Blob([stored]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
+  return await new Response(stream).arrayBuffer();
 }
 
 class PCloudSrc extends CachedSrc {
@@ -1944,22 +2201,32 @@ class PCloudSrc extends CachedSrc {
     await this.authProvider.authenticate();
   }
 
-  async request(method, params = {}, options = {}) {
+  /**
+     Signs one call. Credentials travel as query parameters, never as an
+     Authorization header, for every mechanism but OAuth: api.pcloud.com omits
+     Access-Control-Allow-Headers from its preflight response, so a request
+     carrying a header outside the CORS safelist is refused from a web origin.
+  **/
+  async signed(method, params, options) {
     let auth = await this.authProvider.requestAuth();
     let url = new URL(`https://${auth.apiHost}/${method}`);
     for (let [name, value] of Object.entries({ ...params, ...auth.params }))
       url.searchParams.set(name, String(value));
-    let response = await fetch(url, {
+    return [url, {
       method: options.method || "GET",
       headers: { ...auth.headers, ...(options.headers || {}) },
       body: options.body,
       referrerPolicy: "no-referrer",
-    });
+    }];
+  }
+
+  async request(method, params = {}, options = {}) {
+    let response = await fetch(...await this.signed(method, params, options));
     let payload;
     try { payload = await response.json(); }
-    catch (_error) { throw new Error(`pCloud ${method} returned HTTP ${response.status}.`); }
+    catch (_error) { srcErr(`pCloud ${method} returned HTTP ${response.status}.`); }
     if (!response.ok || payload.result !== 0)
-      throw new Error(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
+      srcErr(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
     return payload;
   }
 
@@ -2003,19 +2270,60 @@ class PCloudSrc extends CachedSrc {
     parentDir.ts = 0;
   }
 
+  /**
+     Calls a method that answers with raw bytes on success and with a JSON
+     envelope on failure, as getzip does.
+  **/
+  async requestBytes(method, params = {}, options = {}) {
+    let response = await fetch(...await this.signed(method, params, options));
+    if (!response.ok) srcErr(`pCloud ${method} returned HTTP ${response.status}.`);
+    let buffer = await response.arrayBuffer();
+    if ((response.headers.get("content-type") || "").includes("json")) {
+      let payload;
+      try { payload = JSON.parse(new TextDecoder().decode(buffer)); }
+      catch (_error) { srcErr(`pCloud ${method} returned unreadable data.`); }
+      srcErr(`pCloud ${method} failed: ${payload.error || response.status} (result ${payload.result ?? "n/a"}).`);
+    }
+    return new Uint8Array(buffer);
+  }
+
+  /**
+     Reads a file's contents. Which call can do that depends on the
+     authentication mechanism rather than the platform, so the mechanism decides:
+     see PCloudDirectAuth.contentAccess and PCloudOAuthAuth.contentAccess.
+  **/
   async getFileSrc(_path, _name, _dir, file) {
+    await this.authProvider.authenticate();
+    return this.authProvider.contentAccess == "zip"
+      ? unzipSingleEntry(await this.requestBytes("getzip", { fileids: file.id }))
+      : await this.getFileFromContentHost(file);
+  }
+
+  /**
+     Downloads through the content host getfilelink hands out. Works only where
+     CORS does not apply, which means the browser extension and its
+     host_permissions.
+  **/
+  async getFileFromContentHost(file) {
     let link = await this.request("getfilelink", { fileid: file.id, contenttype: "application/pdf" });
-    if (!link.hosts?.length || !link.path) throw new Error("pCloud returned no download location.");
+    if (!link.hosts?.length || !link.path) srcErr("pCloud returned no download location.");
     let response = await fetch(`https://${link.hosts[0]}${link.path}`, { referrerPolicy: "no-referrer" });
-    if (!response.ok) throw new Error(`pCloud download failed with HTTP ${response.status}.`);
+    if (!response.ok) srcErr(`pCloud download failed with HTTP ${response.status}.`);
     return await response.arrayBuffer();
   }
 
   async putFileSrc(_path, name, data, dir, _file) {
-    await this.request("uploadfile", { folderid: dir.id, filename: name, nopartial: 1 }, {
-      method: "PUT",
-      headers: { "Content-Type": "application/octet-stream" },
-      body: data,
+    // multipart/form-data is one of the three CORS-safelisted Content-Type
+    // values, so this is a simple request and is never preflighted. A PUT with
+    // application/octet-stream is preflighted and therefore fails from a web
+    // origin, where api.pcloud.com answers OPTIONS without an
+    // Access-Control-Allow-Headers field. A simple request works in the
+    // extension too, so there is no platform branch here.
+    let form = new FormData();
+    form.append("file", new Blob([data], { type: "application/pdf" }), name);
+    await this.request("uploadfile", { folderid: dir.id, nopartial: 1 }, {
+      method: "POST",
+      body: form,
     });
     dir.ts = 0;
   }
@@ -3092,4 +3400,5 @@ class FileSystemView extends FileListView {
   }
 }
 window._FileSrc_ = FileSrc; window._CachedSrc_ = CachedSrc; window._PCloudSrc_ = PCloudSrc;
-window._PCloudOAuthAuth_ = PCloudOAuthAuth;
+window._PCloudOAuthAuth_ = PCloudOAuthAuth; window._PCloudDirectAuth_ = PCloudDirectAuth;
+window._WebPasswordStore_ = WebPasswordStore;

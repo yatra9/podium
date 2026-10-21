@@ -29,6 +29,43 @@
         <button id="listRoot" type="button" disabled>2. List root folder</button>
       </div>
 
+      <div class="row">
+        <input id="accessToken" type="password" autocomplete="off" placeholder="pCloud OAuth access token (alternative to direct login)">
+        <button id="useAccessToken" type="button">1b. Use access token</button>
+      </div>
+      <p>Direct login no longer yields a reusable token on every account. The descriptor test needs one, so paste an OAuth access token instead: open the extension build's Podium tab, sign in to pCloud, and read <code>pcloud-oauth</code> from <code>chrome.storage.session</code> in that tab's console. The token stays in memory here and the input is cleared on use.</p>
+
+      <section>
+        <h2>What the download tests prove</h2>
+        <p>The question each test answers is whether a web origin can read the bytes of a pCloud file at all. Only <code>api.pcloud.com</code> sends <code>Access-Control-Allow-Origin: *</code>; the content hosts it hands out do not.</p>
+        <ul>
+          <li><strong>getfilelink download</strong> fetches the file from a content host. Expected to fail from a web origin. This is why pCloud support is currently confined to the browser extension, where <code>host_permissions</code> bypass CORS.</li>
+          <li><strong>file_pread download</strong> would read bytes from <code>api.pcloud.com</code> through the descriptor API. Expected to fail: <code>file_open</code> answers <code>2003 Access denied</code> even with no credentials at all, so the descriptor API is closed to API clients.</li>
+          <li><strong>getzip download</strong> asks <code>api.pcloud.com</code> for a single-member archive and extracts it in the browser. This is the remaining candidate. If it passes from a deployed origin, a plain web app or PWA can read pCloud files with no extension.</li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>Can a web origin write a file back?</h2>
+        <p>Reading was the question that forced pCloud support into the extension, but writing was never tested from a web origin, and Podium's current upload cannot work there. <code>PCloudSrc.putFileSrc</code> sends <code>PUT</code> with <code>Content-Type: application/octet-stream</code>, which is not a CORS-safelisted value, so the request is preflighted — and <code>api.pcloud.com</code> answers <code>OPTIONS</code> with <code>Access-Control-Allow-Origin</code> and <code>Access-Control-Allow-Methods</code> but no <code>Access-Control-Allow-Headers</code>.</p>
+        <p><code>multipart/form-data</code> is one of the three safelisted <code>Content-Type</code> values, so a <code>POST</code> built from a <code>FormData</code> is a simple request and is never preflighted. This test runs both, then reads the file back with <code>getzip</code> and compares every byte: a write that returns <code>result 0</code> is worthless to a score annotator if the annotations do not survive the trip.</p>
+        <p>The test works in its own folder, <code>/podium-write-probe</code>, uploads one file of random bytes, and deletes what it created. If the folder already existed it is left in place and only this run's uploads are removed. Re-enter the email and password first: the password is never kept between tests.</p>
+        <p>A few tens of kilobytes answer the CORS question but measure nothing, because the whole request is round-trip latency. Saving an annotated score uploads megabytes, so run the deployed-origin test at a realistic size as well.</p>
+        <p>The same run then exercises the five metadata methods Podium calls that no probe had reached: <code>createfolder</code>, <code>listfolder</code> on a subfolder rather than the root, <code>renamefolder</code>, <code>renamefile</code>, <code>deletefile</code> and <code>deletefolder</code>. They are plain JSON GETs like the proven <code>listfolder</code>, so they are expected to pass — but "expected to pass" is what was said about writing.</p>
+        <div class="row">
+          <label>Probe size <input id="writeSize" type="number" value="32" min="1" max="65536" step="1"> KiB</label>
+          <button id="testWrite" type="button">Test write and metadata (creates, verifies, then deletes)</button>
+        </div>
+      </section>
+
+      <section>
+        <h2>Is one digest reusable?</h2>
+        <p><code>PCloudDirectAuth</code> signs every request with a fresh digest, so every operation costs two round trips. <code>getdigest</code> returns an expiry, which implies a digest may be reused until then, but nothing has tested that pCloud actually accepts the same digest twice. This runs the same three <code>listfolder</code> calls both ways and reports the expiry window, so the implementation can cache the digest with a margin rather than guess.</p>
+        <div class="row">
+          <button id="testDigestReuse" type="button">Test digest reuse</button>
+        </div>
+      </section>
+
       <section>
         <h2>Root PDFs</h2>
         <div id="files"></div>
