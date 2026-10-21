@@ -331,17 +331,36 @@ class Layout {
     Object.assign(this.elm.style, this.centerLT());
   }
 
-  // Which edges the page-number bands sit on when the layout does not say
+  // Which edges the page-number bands sit on when a score does not say
   // otherwise. Book and Horizontal have always used the sides, Vertical the ends.
-  get pnDefaultAxis() { return "L-R"; }
+  static pnDefaultAxes = { book: "L-R", horizontal: "L-R", vertical: "T-B" };
+
+  get pnDefaultAxis() { return Layout.pnDefaultAxes[this.cell.key] ?? "L-R"; }
+
+  static normalizePn(cell) {
+    // pnShow stays the "On"/"Off" it has always been, so a score saved here and
+    // opened in a Podium that knows nothing of movable bands still shows its
+    // page numbers, at that Podium's own edges. The band's own two choices
+    // travel together in pnBand, which such a Podium never reads but does carry
+    // through its own save untouched (an unknown key in a cell's stash is
+    // copied in and written back; see Menu.stashFromJsonObj). A score older
+    // than pnBand -- or one whose stash has been edited into nonsense -- gets
+    // this layout's long-standing edges. Table has no band to place.
+    let axis = Layout.pnDefaultAxes[cell.key];
+    if (!axis) return cell.stash;
+    let band = cell.stash.pnBand;
+    if (!band || typeof band != "object") band = cell.stash.pnBand = {};
+    if (band.axis != "L-R" && band.axis != "T-B") band.axis = axis;
+    if (band.place != "Inset" && band.place != "Over") band.place = "Inset";
+    return cell.stash;
+  }
 
   pnAxis() {
     // The edges the number bands sit on: "L-R" (a tall band down each side) or
     // "T-B" (a wide one across the top and the foot), and null when the reader
-    // has turned the numbers off. A score saved before the choice existed
-    // carries "On", which meant whichever edges that layout used then.
-    if (!this.pnShow || this.pnShow == "Off") return null;
-    return this.pnShow == "On" ? this.pnDefaultAxis : this.pnShow;
+    // has turned the numbers off.
+    if (this.pnShow != "On") return null;
+    return this.pnBand?.axis ?? this.pnDefaultAxis;
   }
 
   pnOver() {
@@ -349,7 +368,7 @@ class Layout {
     // the pages they cost no room at all, which is the point: a band is 45px of
     // a dimension the fit may be fighting for. Pages are engraved with a margin
     // of their own, so the numbers land on paper rather than on music.
-    return this.pnAxis() != null && this.pnPlace == "Over";
+    return this.pnAxis() != null && this.pnBand?.place == "Over";
   }
 
   pnGirth(axis) {
@@ -393,6 +412,9 @@ class Layout {
     // A build interrupted by the layout's destruction just ends: callers (e.g.
     // Layout.open) see a normal return, as they did before whileAlive() existed.
     try {
+      // Every build reads the cell's stash, so this is where a settings value
+      // one version old is settled (see normalizePn).
+      Layout.normalizePn(this.cell);
       return await this._build(...args);
     } catch (err) {
       if (!(err instanceof LayoutDestroyed)) throw err;
@@ -1614,11 +1636,6 @@ class ScrollLayout
 
 
 class ScrollLayout extends Layout {
-  // A horizontal scroll has always carried its numbers down the sides, a
-  // vertical one across the top and the foot: both along the scroll, in the
-  // rolls. That is what a score saved with "On" asked for.
-  get pnDefaultAxis() { return this.cell.key == "horizontal" ? "L-R" : "T-B"; }
-
   // Define svg for "back" of scroll, i.e. visible on the left/right scrollers
   static verso = "url('data:image/svg+xml;base64," + btoa(`
   <!-- leather-worn-amber.svg -->

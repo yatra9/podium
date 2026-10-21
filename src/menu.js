@@ -508,10 +508,12 @@ class Menu {
           storage: "score", // layout settings (incl. pz pan-zoom) persist per-score, not as a global localStorage default
           stash: {
             fit: "Auto", // "Auto","Width","Height","None",
-            pnShow: "L-R", // "Off", "L-R" (bands down the sides) or "T-B" (across the ends).
-                           // "On", from a score saved before the edges could be
-                           // chosen, means whichever edges this layout used then.
-            pnPlace: "Inset", // "Inset" (bands beside the pages) or "Over" (on them)
+            pnShow: "On", // "On" or "Off"
+            // Which edges the page-number bands sit on ("L-R" down the sides,
+            // "T-B" across the ends) and whether they take a strip of their own
+            // ("Inset") or lie over the pages ("Over"). One key, so that a
+            // Podium that knows nothing of it carries it through a save intact.
+            pnBand: { axis: "L-R", place: "Inset" },
             pace: 350, // pace: animation speed in msecs/flip
             pz: null, // user pan-zoom saved with the score. When set: { left, top, fontSize, w, h }; applied only when w/h match the current viewport (see Layout.userPz)
           },
@@ -523,8 +525,8 @@ class Menu {
           stash: {
             fit: "Auto", // "Auto", "Width","Height","None"
             gap: 0.2, // [0,10]% of fit dimension
-            pnShow: "L-R", // see book cell
-            pnPlace: "Inset",
+            pnShow: "On",
+            pnBand: { axis: "L-R", place: "Inset" }, // see book cell
             pgShow: 2,
             pgSnap: 2, // -4:none, -3:visible, -2:1/4pg, -1:1/3 pg, 0:1/2 pg
             pace: 350, // msec/snap
@@ -538,8 +540,8 @@ class Menu {
           stash: {
             fit: "Auto", // "Auto", "Width","Height","None"
             gap: 0.2, // [0,10]% of fit dimension
-            pnShow: "T-B", // see book cell
-            pnPlace: "Inset",
+            pnShow: "On",
+            pnBand: { axis: "T-B", place: "Inset" }, // see book cell
             pgShow: 1, // [1,_score_.pages.length)
             pgSnap: 0,  // i.e. 1/2 pg
             pace: 350, // msec/snap
