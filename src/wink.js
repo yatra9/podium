@@ -1,4 +1,4 @@
-export { WinkJudge, WinkWatch, WinkLog, WinkHud, WinkTurner, WINK_LIMITS, winkPose };
+export { WinkJudge, WinkScale, WinkWatch, WinkLog, WinkHud, WinkTurner, WINK_LIMITS, winkPose };
 // +skip
 
 /**
@@ -53,27 +53,68 @@ import { clamp, css, dataIndex, helm, Schedule } from "./common.js";
   WinkWatch and WinkPanel below.
 **/
 
-// The numbers a wink is measured against. Every one of them is a guess until
-// it has been measured on a player with an instrument at their lips, which is
-// what the Wink panel's recording is for; treat these as a starting point to
-// argue with, not a result.
+// The numbers a wink is measured against.
+//
+// The eye scores themselves are not among them, and that is the point. Two
+// recordings settled it: the model's eyeBlink readings sat around 0.45 whatever
+// the eyes did, never came near zero, and moved between sessions. An absolute
+// threshold tuned on one machine means nothing on the next. So a wink is read
+// from where each eye sits *relative to this player's own resting level,
+// measured over the last few seconds* -- see WinkScale -- and from the
+// difference between the two eyes rather than from either one alone.
+//
+// What is left here is timing and geometry, which do carry across.
 const WINK_LIMITS = {
-  // An eye counts as shut at `closed` and as open under `open`. The gap
-  // between them is deliberate: a face that reads 0.5 on both eyes is doing
-  // something that is neither, and the safe answer to that is nothing.
-  closed: 0.7,
-  open: 0.3,
+  // How far apart the two normalised eyes must be for a wink to begin. This is
+  // the measurement that does the real work: across 41 seconds of recording
+  // and more than a dozen blinks, not one blink put the eyes this far apart,
+  // while every deliberate wink did. A blink closes both eyes together, so it
+  // cancels out of a difference between them.
+  start: 0.2,
+  // Having begun, the gesture survives while the difference stays above
+  // `start * hold`. A wink is not steady -- the open eye drifts up as the face
+  // squints with it -- and a gesture that dropped out on one ragged frame
+  // would be unusable.
+  hold: 0.5,
+  // The eye that is closing must get at least this far from its own resting
+  // level. Without it, a difference made entirely by the *other* eye opening
+  // wider than usual would read as a wink.
+  shut: 0.35,
   // A blink is 50-150ms, so nothing at all happens before `showMs` and the
   // page does not turn before `fireMs`. The gauge fills across that gap, so
   // widening it makes the gesture both safer and slower to perform.
+  //
+  // 500ms is deliberately longer than the 300ms that caught the most winks in
+  // the recordings. A page that turns itself mid-phrase is the one failure
+  // worth paying to avoid, and what it costs is only that a wink has to be
+  // held on purpose -- which a player can learn -- rather than any loss of
+  // safety: no blink in those recordings produced a difference at all.
   showMs: 100,
-  fireMs: 400,
+  fireMs: 500,
   // After a turn, how long before another wink is looked at. Covers the page
   // animation and stops a long-held eye from walking through the score.
   cooldownMs: 800,
-  // How long both eyes must have been open before a wink is believed. A wink
-  // that begins in the recovery of a blink is more likely to be the blink.
+  // How long both eyes must have been seen resting near their own open level
+  // before a wink is believed, and how near "resting" has to be. Being
+  // relative, this still works for a player whose eyes never read as fully
+  // open at all.
   restMs: 400,
+  restOpen: 0.3,
+  // The windows the resting and closed levels are learnt over.
+  //
+  // Rest is a low percentile of the last `restSec` seconds rather than the
+  // minimum, so that one wide-eyed frame cannot define it. Closed is the
+  // highest reading in the last `peakSec`, which blinks supply for free
+  // several times a minute -- nobody is asked to calibrate anything. The long
+  // window holds a blink or two and is still short enough to follow the light
+  // changing or the player shifting in their seat.
+  restSec: 6,
+  restQuantile: 0.2,
+  peakSec: 30,
+  // Until the gap between rest and closed is at least this wide, nothing has
+  // been seen that could have been a blink, so the scale means nothing. The
+  // judge refuses to read a wink until then and says it is still learning.
+  minSpan: 0.15,
   // How far the head may be turned, in degrees, and still be read. A flute is
   // played with the head turned away, which is exactly the case this bounds:
   // past some angle one eye is simply not being seen any more, and the
@@ -118,6 +159,86 @@ const WINK_LIMITS = {
 const WINK_SIDES = { left: "prev", right: "next" };
 
 /**
+class WinkScale
+
+  What this player's eyes read when they are open, and when they are shut.
+
+  The model's eye scores measure nothing absolute. Across two recordings of one
+  person they sat around 0.45 at rest, ranged 0.19 to 0.84, and moved between
+  the two sessions; across people, cameras and seating distances there is no
+  reason to expect even that much consistency. Tuning a threshold against one
+  recording is tuning against that afternoon.
+
+  So the scale is learnt from the player as they sit there, and everything
+  above it works in normalised units: 0 is where this eye sits when open, 1 is
+  as shut as it has lately been seen to get.
+
+  Nobody is asked to calibrate. Blinking does it -- an involuntary blink every
+  few seconds supplies the top of the range, and the stretches between them
+  supply the bottom. Until a blink has been seen, feed() says so by answering
+  null, and the judge refuses to read a wink rather than guess at one.
+**/
+class WinkScale {
+  constructor(limits) {
+    this.limits = limits;
+    this.reset();
+  }
+
+  reset() {
+    this.frames = [];  // { t, left, right }, back as far as peakSec
+    this.rest = null;  // where each eye sits when open, in the model's units
+    this.peak = null;  // the shuttest each has lately been seen
+  }
+
+  // One frame of raw scores in, normalised scores out -- or null while the
+  // scale is still being learnt, which is also what it answers when it has
+  // just been reset.
+  feed(t, left, right) {
+    let L = this.limits;
+    // A clock that went backwards means a different session, not a frame out
+    // of order: start again rather than mix the two.
+    if (this.frames.length && t < this.frames.at(-1).t) this.frames = [];
+    this.frames.push({ t, left, right });
+    while (this.frames.length && t - this.frames[0].t > L.peakSec * 1000)
+      this.frames.shift();
+
+    let recent = this.frames.filter(frame => t - frame.t <= L.restSec * 1000);
+    // Under a second of face at fifteen frames a second: too little to say
+    // where anything rests.
+    if (recent.length < 10) return (this.rest = this.peak = null);
+
+    // A low percentile rather than the minimum: eyes are open most of the
+    // time, so the bottom of the recent spread is where open is, and a single
+    // wide-eyed frame must not be allowed to move it.
+    let at = (values, part) => {
+      let sorted = values.sort((a, b) => a - b);
+      return sorted[clamp(Math.round(part * (sorted.length - 1)), 0, sorted.length - 1)];
+    };
+    let rest = {
+      left: at(recent.map(frame => frame.left), L.restQuantile),
+      right: at(recent.map(frame => frame.right), L.restQuantile),
+    };
+    let peak = { left: -Infinity, right: -Infinity };
+    for (let frame of this.frames) {
+      if (frame.left > peak.left) peak.left = frame.left;
+      if (frame.right > peak.right) peak.right = frame.right;
+    }
+
+    // No blink seen yet on one eye or the other, so there is no range to
+    // measure a wink against.
+    if (peak.left - rest.left < L.minSpan || peak.right - rest.right < L.minSpan)
+      return (this.rest = this.peak = null);
+
+    this.rest = rest;
+    this.peak = peak;
+    return {
+      left: clamp((left - rest.left) / (peak.left - rest.left), 0, 1),
+      right: clamp((right - rest.right) / (peak.right - rest.right), 0, 1),
+    };
+  }
+}
+
+/**
 class WinkJudge
 
   The gesture, as a state machine over video frames.
@@ -143,17 +264,21 @@ class WinkJudge
   The verdict:
 
     track      the face is being followed well enough to read a wink from
-    ready      track, and both eyes are resting open: wink now and it will count
+    ready      track, scale learnt, both eyes resting: wink now and it counts
     why        when not ready, which of the above failed, as a stable key
     state      "idle" | "arming" | "charging" | "cooldown"
     direction  "next" | "prev" | null -- the direction being charged
     progress   0..1 across the gauge, 0 unless charging
     turn       "next" | "prev" | null -- turn the page, this frame only
+    norm       { left, right } the eyes against this player's own range, 0..1
+    rest       { left, right } where that range starts, in the model's units
+    peak       { left, right } and where it ends -- both null while learning
+    gap        norm.left - norm.right, the number a wink is actually read from
 
   State, and why there are only four:
 
     idle       nothing is being asked for
-    arming     one eye is shut, but not yet long enough to show anything
+    arming     a wink has begun, but not yet long enough to show anything
     charging   the gauge is up and filling
     cooldown   a page has just turned and winks are not being read
 
@@ -164,6 +289,7 @@ class WinkJudge {
   constructor(limits = {}, sides = {}) {
     this.limits = { ...WINK_LIMITS, ...limits };
     this.sides = { ...WINK_SIDES, ...sides };
+    this.scale = new WinkScale(this.limits);
     this.reset();
   }
 
@@ -179,36 +305,43 @@ class WinkJudge {
     this.why = "no-face";
     this.trackWhy = "no-face";
     this.restWhy = "settling";
-    this.heldFrom = 0;    // when the eye now shut was first seen shut
+    this.norm = { left: 0, right: 0 };
+    this.gap = 0;
+    this.heldFrom = 0;    // when the wink now in progress began
     this.restFrom = null; // when both eyes were first seen resting open
     this.lastT = null;    // the previous frame's clock, to notice a stall
     this.firedAt = -Infinity;
     // Whether a settled rest has been seen that no gesture has spent yet. A
-    // wink only counts when it starts from one, which is what keeps the second
-    // half of a blink from being read as the start of a wink, and -- because
-    // taking up a gesture spends it -- also what stops the eye that just
-    // turned a page from turning the next one without being opened first.
+    // wink only counts when it starts from one, and taking a gesture up spends
+    // it, which is what stops the eye that just turned a page from turning the
+    // next one without being opened first.
+    //
+    // A blink does not spend it. It used to, on the theory that a wink
+    // beginning in a blink's recovery was probably the blink -- but the
+    // recordings showed that "blink, then keep one eye shut" is simply how
+    // this player winks, three times out of six, and the difference between
+    // the eyes tells the two apart anyway.
     this.rested = false;
   }
 
   // Take up new limits or a new mapping of eyes to directions, and drop any
   // gesture in progress: a charge measured against the old numbers means
   // nothing against the new ones, and the reader moving a slider is not asking
-  // for a page to be turned.
+  // for a page to be turned. The learnt scale survives -- it is a measurement
+  // of the player, not a setting, and throwing it away would blind the judge
+  // for several seconds every time a slider moved.
   tune(limits = {}, sides = {}) {
     this.limits = { ...WINK_LIMITS, ...limits };
     this.sides = { ...WINK_SIDES, ...sides };
+    this.scale.limits = this.limits;
     this.reset();
   }
 
-  // Which eye the player is holding shut, as the player's own left or right,
-  // or null for neither (both open) and for both (a blink).
-  side(sample) {
-    let { closed, open } = this.limits;
-    let left = sample.left ?? 0, right = sample.right ?? 0;
-    if (left >= closed && right < open) return "left";
-    if (right >= closed && left < open) return "right";
-    return null;
+  // Forget the player as well as the gesture: a new camera, or a new face in
+  // front of it, is a new scale.
+  forget() {
+    this.scale.reset();
+    this.reset();
   }
 
   // Is the face being followed well enough to read a wink from it? This asks
@@ -242,21 +375,39 @@ class WinkJudge {
     return true;
   }
 
-  // Both eyes resting open, and for long enough to have settled. Maintains
-  // restFrom, which is the clock behind restMs.
-  judgeRest(sample) {
-    let { open, restMs } = this.limits;
-    let left = sample.left ?? 0, right = sample.right ?? 0;
-    if (left >= open || right >= open) {
+  // Both eyes resting near their own open level, and for long enough to have
+  // settled. Maintains restFrom, which is the clock behind restMs.
+  judgeRest(t) {
+    let { restOpen, restMs } = this.limits;
+    if (this.norm.left >= restOpen || this.norm.right >= restOpen) {
       this.restFrom = null;
       // Say which it is, because "both eyes shut" and "one eye shut" mean very
       // different things to a player trying to aim a camera.
-      this.restWhy = left >= open && right >= open ? "eyes-shut" : "eye-shut";
+      this.restWhy = this.norm.left >= restOpen && this.norm.right >= restOpen
+        ? "eyes-shut" : "eye-shut";
       return false;
     }
-    if (this.restFrom == null) this.restFrom = sample.t;
-    if (sample.t - this.restFrom < restMs) return (this.restWhy = "settling"), false;
+    if (this.restFrom == null) this.restFrom = t;
+    if (t - this.restFrom < restMs) return (this.restWhy = "settling"), false;
     return true;
+  }
+
+  // Which eye is closing, as the player's own left or right, and how far it has
+  // got -- read from the difference between the two eyes rather than from
+  // either one's level, because the difference is what a blink cancels out of.
+  // Null when neither is far enough ahead of the other to mean anything.
+  lean() {
+    let { start, shut } = this.limits;
+    let gap = this.gap, side = gap > 0 ? "left" : "right";
+    let closing = gap > 0 ? this.norm.left : this.norm.right;
+    // Beginning asks for the full difference and for the closing eye to have
+    // actually moved; holding asks only that the difference has not collapsed
+    // and still leans the same way. A wink is ragged in the middle, and a
+    // gesture that fell out on one bad frame would be unusable.
+    let bar = this.direction ? start * this.limits.hold : start;
+    if (Math.abs(gap) < bar) return null;
+    if (!this.direction && closing < shut) return null;
+    return side;
   }
 
   feed(sample) {
@@ -266,9 +417,9 @@ class WinkJudge {
     // held through one: the clock ran on, but the evidence did not. The
     // cooldown is deliberately left alone -- a page that has just turned has
     // just turned, however long the stall was.
-    let gap = this.lastT != null && t - this.lastT > L.gapMs;
+    let stalled = this.lastT != null && t - this.lastT > L.gapMs;
     this.lastT = t;
-    if (gap) {
+    if (stalled) {
       this.direction = null;
       this.heldFrom = t;
       this.restFrom = null;
@@ -278,27 +429,34 @@ class WinkJudge {
     }
 
     this.track = this.judgeTrack(sample);
-    let rest = this.track && this.judgeRest(sample);
+    // The scale is fed every frame a face is in, including through a wink: a
+    // wink's own peak is a perfectly good reading of how shut that eye gets.
+    let norm = this.track
+      ? this.scale.feed(t, sample.left ?? 0, sample.right ?? 0)
+      : null;
+    this.norm = norm ?? { left: 0, right: 0 };
+    this.gap = this.norm.left - this.norm.right;
+    // Still learning this player's range: there is nothing to read a wink
+    // against, and guessing is worse than waiting.
+    let learning = this.track && !norm;
+
+    let rest = this.track && !learning && this.judgeRest(t);
     // A face that is not being followed says nothing about the eyes behind it,
     // so the rest clock starts again from the frame the face comes back on:
     // the eye could have been shut the whole time it was away.
-    if (!this.track) {
+    if (!this.track || learning) {
       this.restFrom = null;
       this.rested = false;
     }
     if (rest) this.rested = true;
-    // Both eyes out of the open band is a blink, and it spends the rest that
-    // came before it: a wink that starts in the recovery of a blink is more
-    // likely to be the blink. One eye leaving that band must not spend it,
-    // because that is how every wink begins -- the lid passes through the
-    // middle of the range on its way down.
-    else if (this.restWhy == "eyes-shut") this.rested = false;
     this.ready = this.track && rest;
     // The most fundamental complaint wins: being told the eyes are shut is no
     // use to a player whose face is not in the frame at all.
-    this.why = !this.track ? this.trackWhy : rest ? "ready" : this.restWhy;
+    this.why = !this.track ? this.trackWhy
+      : learning ? "learning"
+      : rest ? "ready" : this.restWhy;
 
-    let side = this.track ? this.side(sample) : null;
+    let side = this.track && !learning ? this.lean() : null;
     let direction = side ? this.sides[side] ?? null : null;
 
     // Cooldown runs on its own clock and ignores everything else, so that a
@@ -315,7 +473,7 @@ class WinkJudge {
       return this.verdict(null);
     }
 
-    // A gesture may only begin from a settled rest. Mid-gesture the eye is
+    // A gesture may only begin from a settled rest. Mid-gesture one eye is
     // shut and there is no rest to be had, so this asks for one only on the
     // frame a gesture starts -- which is also what stops the eye that just
     // turned a page from turning the next one without being opened first.
@@ -376,6 +534,10 @@ class WinkJudge {
       direction: this.direction,
       progress: this.progress,
       turn,
+      norm: this.norm,
+      gap: this.gap,
+      rest: this.scale.rest,
+      peak: this.scale.peak,
     };
   }
 }
@@ -566,7 +728,9 @@ class WinkWatch {
       this.marker = marker;
       this.stream = stream;
       this.video = video;
-      this.judge.reset();
+      // A new camera, or whoever is in front of it now, is a new scale: the
+      // learnt range belongs to the last session, not this one.
+      this.judge.forget();
       // Not the target rate: the first detection compiles shaders and can take
       // a second or more, and claiming a rate before one has been measured
       // would let the judge time a gesture against a model that is not yet
@@ -624,7 +788,7 @@ class WinkWatch {
     this.stream = null;
     this.marker?.close();
     this.marker = null;
-    this.judge.reset();
+    this.judge.forget();
     if (this.status != "off") this.say("off");
   }
 
@@ -779,6 +943,10 @@ class WinkLog {
       eyeRightX: sample.eyes?.right?.x ?? "", eyeRightY: sample.eyes?.right?.y ?? "",
       sep: sample.sep ?? "",
       fps: sample.fps ?? 0,
+      normLeft: verdict.norm?.left ?? "", normRight: verdict.norm?.right ?? "",
+      gap: verdict.gap ?? "",
+      restLeft: verdict.rest?.left ?? "", restRight: verdict.rest?.right ?? "",
+      peakLeft: verdict.peak?.left ?? "", peakRight: verdict.peak?.right ?? "",
       track: verdict.track ? 1 : 0,
       ready: verdict.ready ? 1 : 0,
       why: verdict.why,
@@ -805,6 +973,7 @@ class WinkLog {
   toCsv() {
     let plain = ["t", "mark", "face", "left", "right", "yaw", "pitch", "roll",
       "eyeLeftX", "eyeLeftY", "eyeRightX", "eyeRightY", "sep", "fps",
+      "normLeft", "normRight", "gap", "restLeft", "restRight", "peakLeft", "peakRight",
       "track", "ready", "why", "state", "direction", "progress", "turn"];
     let round = (value) => typeof value == "number" ? +value.toFixed(5) : value;
     let out = [[...plain, ...(this.names ?? [])].join(",")];
@@ -1029,7 +1198,7 @@ class WinkTurner {
   // never had one of these keys still gets a working default.
   limits() {
     let limits = {};
-    for (let key of ["closed", "open", "showMs", "fireMs", "cooldownMs",
+    for (let key of ["start", "shut", "showMs", "fireMs", "cooldownMs",
                      "restMs", "yawMax", "pitchMax", "rollMax", "sepMin"])
       if (typeof this.stash[key] == "number") limits[key] = this.stash[key];
     return limits;

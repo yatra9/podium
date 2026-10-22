@@ -853,10 +853,10 @@ class Menu {
             back: "Back On",
             place: "Low Right",
             device: "",  // the camera, by id; empty for whichever faces the player
-            closed: 0.7,
-            open: 0.3,
+            start: 0.2,
+            shut: 0.35,
             showMs: 100,
-            fireMs: 400,
+            fireMs: 500,
             cooldownMs: 800,
             restMs: 400,
             yawMax: 32,

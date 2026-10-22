@@ -9,6 +9,14 @@ const { test, expect } = require("@playwright/test");
 // check -- WinkJudge is fed one plain object per video frame and says what it
 // makes of the gesture -- so these play frames at it the way a blink, a wink,
 // a turned head or a stalled model would arrive, and never open a device.
+//
+// A wink is read from how far apart the two eyes are *relative to this
+// player's own resting level*, because the model's raw scores measure nothing
+// absolute: in two real recordings they sat around 0.45 whatever the eyes did
+// and moved between sessions. So the frames here are written in the units the
+// model really produces -- a resting level well away from zero, a range
+// narrower than 0..1, and the two eyes not even alike -- and the judge is
+// expected to find that range for itself.
 const pageFile = path.join(__dirname, "..", "build", "podium.html");
 test.skip(!fs.existsSync(pageFile), "build/podium.html is missing; run build.py --podium");
 
@@ -18,25 +26,41 @@ test.beforeEach(async ({ page }) => {
 });
 
 const LIMITS = {
-  closed: 0.7, open: 0.3, showMs: 100, fireMs: 400,
-  cooldownMs: 800, restMs: 400, fpsMin: 7, gapMs: 250, sepMin: 110,
+  start: 0.2, hold: 0.5, shut: 0.35, showMs: 100, fireMs: 500,
+  cooldownMs: 800, restMs: 400, restOpen: 0.3, fpsMin: 7, gapMs: 250,
+  sepMin: 110, restSec: 6, restQuantile: 0.2, peakSec: 30, minSpan: 0.15,
 };
 
+// This imaginary player's eyes, in the model's own units. Taken from the real
+// recordings: open nowhere near zero, shut nowhere near one, and the left eye
+// reading differently from the right throughout.
+const OPEN = { left: 0.42, right: 0.33 };
+const SHUT = { left: 0.81, right: 0.74 };
+
+// How shut each eye is, as a fraction of this player's own range.
+function eyes(left, right) {
+  return {
+    left: OPEN.left + (SHUT.left - OPEN.left) * left,
+    right: OPEN.right + (SHUT.right - OPEN.right) * right,
+  };
+}
+
 // A run of frames at a steady rate. Each span is a stretch of time the face
-// held one expression: { ms, left, right } plus anything else a sample carries
-// (yaw, eyes, fps, face), which defaults to a face being followed squarely.
+// held one expression: { ms, left, right } as fractions of the player's range,
+// plus anything else a sample carries (yaw, eyes, fps, face, sep), which
+// defaults to a face being followed squarely and close enough to read.
 function frames(spans, { fps = 15, t0 = 1000 } = {}) {
   const step = 1000 / fps;
   const out = [];
   let t = t0;
-  for (const { ms, ...sample } of spans) {
+  for (const { ms, left = 0, right = 0, ...rest } of spans) {
     const until = t + ms;
     while (t < until) {
       out.push({
-        t: Math.round(t), face: true, left: 0, right: 0, fps,
+        t: Math.round(t), face: true, fps, ...eyes(left, right),
         eyes: { left: { x: 0.4, y: 0.4 }, right: { x: 0.6, y: 0.4 } },
         sep: 160, yaw: 0, pitch: 0, roll: 0,
-        ...sample,
+        ...rest,
       });
       t += step;
     }
@@ -44,10 +68,24 @@ function frames(spans, { fps = 15, t0 = 1000 } = {}) {
   return out;
 }
 
-// Both eyes resting open for long enough that a wink made after it counts.
-const settled = { ms: 600, left: 0.05, right: 0.05 };
+// Blinking is what teaches the judge this player's range, and it happens by
+// itself every few seconds. Nothing can be read until it has.
+const blink = (ms = 130) => [
+  { ms: 60, left: 0.45, right: 0.45 },
+  { ms, left: 1, right: 1 },
+  { ms: 60, left: 0.45, right: 0.45 },
+];
 
-// Play the frames and report what the judge made of each one.
+// Enough time open, with a couple of blinks in it, for the range to be learnt
+// and the eyes to have settled afterwards.
+const settled = [
+  { ms: 900, left: 0.02, right: 0.02 },
+  ...blink(),
+  { ms: 900, left: 0.02, right: 0.02 },
+  ...blink(),
+  { ms: 900, left: 0.02, right: 0.02 },
+];
+
 async function play(page, spans, { limits = {}, sides = {}, fps = 15 } = {}) {
   const samples = frames(spans, { fps });
   return page.evaluate(([samples, limits, sides]) => {
@@ -59,44 +97,75 @@ async function play(page, spans, { limits = {}, sides = {}, fps = 15 } = {}) {
 const turns = (verdicts) => verdicts.filter(v => v.turn).map(v => v.turn);
 const charged = (verdicts) => verdicts.filter(v => v.state == "charging");
 
-test("a blink turns no page and shows no gauge", async ({ page }) => {
-  // Both eyes, 120ms, which is an ordinary blink. The eyes pass through the
-  // middle of the range on the way down and back, so this also covers the gap
-  // between open and closed being read as neither.
+test("the range is learnt from the player, not assumed", async ({ page }) => {
+  // The judge is given eyes that rest at 0.42 and 0.33 and shut at 0.81 and
+  // 0.74 -- nothing like 0 and 1, and not even alike. It has to find that for
+  // itself, and refuse to read anything until it has.
   const verdicts = await play(page, [
-    settled,
+    { ms: 800, left: 0.02, right: 0.02 },
+    ...blink(),
+    { ms: 900, left: 0.02, right: 0.02 },
+  ]);
+
+  // Before any blink there is no range, and the judge says so rather than
+  // guessing: nothing is ready and nothing could fire.
+  expect(verdicts[5].why).toBe("learning");
+  expect(verdicts[5].ready).toBe(false);
+  expect(verdicts[5].rest).toBe(null);
+
+  // Afterwards it has found both ends of both eyes, close to the truth.
+  const last = verdicts.at(-1);
+  expect(last.rest.left).toBeCloseTo(OPEN.left, 1);
+  expect(last.rest.right).toBeCloseTo(OPEN.right, 1);
+  expect(last.peak.left).toBeCloseTo(SHUT.left, 1);
+  expect(last.peak.right).toBeCloseTo(SHUT.right, 1);
+  // And in those units the resting eyes read as open, so a wink would count.
+  expect(last.norm.left).toBeLessThan(0.1);
+  expect(last.ready).toBe(true);
+  expect(last.why).toBe("ready");
+});
+
+test("a blink turns no page and shows no gauge", async ({ page }) => {
+  // Both eyes together, which is what a blink is. They pass through the middle
+  // of the range on the way down and back, so this also covers the halfway
+  // point being read as neither.
+  const verdicts = await play(page, [
+    ...settled,
     { ms: 60, left: 0.5, right: 0.5 },
-    { ms: 120, left: 0.95, right: 0.95 },
+    { ms: 150, left: 1, right: 1 },
     { ms: 60, left: 0.5, right: 0.5 },
-    { ms: 600, left: 0.05, right: 0.05 },
+    { ms: 900, left: 0.02, right: 0.02 },
   ]);
 
   expect(turns(verdicts)).toEqual([]);
   expect(charged(verdicts)).toEqual([]);
-  expect(verdicts.every(v => v.progress == 0)).toBe(true);
-  // And it said why it was not listening, rather than just going quiet.
-  expect(verdicts.some(v => v.why == "eyes-shut")).toBe(true);
+  // A blink leaves the two eyes level, which is the whole reason it is safe to
+  // read a wink from the difference between them.
+  const shut = verdicts.filter(v => v.why == "eyes-shut");
+  expect(shut.length).toBeGreaterThan(0);
+  expect(Math.max(...shut.map(v => Math.abs(v.gap)))).toBeLessThan(LIMITS.start);
 });
 
-test("a wink too short to charge turns no page", async ({ page }) => {
-  // 200ms is past the gauge appearing and well short of the turn: the player
-  // should see it start and see it come to nothing.
+test("a blink is still a blink when the two eyes are not quite together", async ({ page }) => {
+  // Real blinks are not symmetrical. This one is 0.15 of the range out of step
+  // at its worst, and must still not be read as a wink.
   const verdicts = await play(page, [
-    settled,
-    { ms: 200, left: 0.05, right: 0.9 },
-    { ms: 600, left: 0.05, right: 0.05 },
+    ...settled,
+    { ms: 70, left: 0.55, right: 0.40 },
+    { ms: 140, left: 1, right: 0.88 },
+    { ms: 70, left: 0.50, right: 0.38 },
+    { ms: 900, left: 0.02, right: 0.02 },
   ]);
 
   expect(turns(verdicts)).toEqual([]);
-  expect(charged(verdicts).length).toBeGreaterThan(0);
-  expect(Math.max(...verdicts.map(v => v.progress))).toBeLessThan(1);
+  expect(charged(verdicts)).toEqual([]);
 });
 
 test("a held wink turns the page once, and fills the gauge on the way", async ({ page }) => {
   const verdicts = await play(page, [
-    settled,
-    { ms: 500, left: 0.05, right: 0.9 },
-    { ms: 600, left: 0.05, right: 0.05 },
+    ...settled,
+    { ms: 700, left: 0.05, right: 0.95 },
+    { ms: 900, left: 0.02, right: 0.02 },
   ]);
 
   expect(turns(verdicts)).toEqual(["next"]);
@@ -106,17 +175,60 @@ test("a held wink turns the page once, and fills the gauge on the way", async ({
   expect(fill.length).toBeGreaterThan(1);
   expect(fill).toEqual([...fill].sort((a, b) => a - b));
   expect(Math.max(...fill)).toBeLessThanOrEqual(1);
-  // It charged in the direction the eye asked for, all the way along.
   expect(charged(verdicts).every(v => v.direction == "next")).toBe(true);
 });
 
-test("opening the eye part way calls the turn off", async ({ page }) => {
-  // 300ms is past the gauge and short of the turn. The gauge has to go away
-  // the moment the eye opens, or the player cannot tell a cancel from a turn.
+test("a wink shorter than the hold turns no page", async ({ page }) => {
+  // 300ms is past the gauge appearing and well short of the 500ms turn. The
+  // recordings say an unprompted wink lasts about this long, which is exactly
+  // why the hold is deliberately longer than one: a page that turns itself
+  // mid-phrase costs more than a wink that has to be held on purpose.
   const verdicts = await play(page, [
-    settled,
-    { ms: 300, left: 0.05, right: 0.9 },
-    { ms: 600, left: 0.05, right: 0.05 },
+    ...settled,
+    { ms: 300, left: 0.05, right: 0.95 },
+    { ms: 900, left: 0.02, right: 0.02 },
+  ]);
+
+  expect(turns(verdicts)).toEqual([]);
+  expect(charged(verdicts).length).toBeGreaterThan(0);
+  expect(Math.max(...verdicts.map(v => v.progress))).toBeLessThan(1);
+});
+
+test("a wink survives the open eye drifting shut with it", async ({ page }) => {
+  // Winking screws up that side of the face and the other eye comes part way
+  // with it: in the recordings the open eye reached 0.7 of its range while the
+  // winking one was at 0.9. Demanding that it stay wide open would refuse most
+  // real winks, so what is asked is only that the two stay far enough apart.
+  const verdicts = await play(page, [
+    ...settled,
+    { ms: 120, left: 0.30, right: 0.55 },
+    { ms: 700, left: 0.55, right: 0.95 },
+    { ms: 900, left: 0.02, right: 0.02 },
+  ]);
+
+  expect(turns(verdicts)).toEqual(["next"]);
+});
+
+test("a wink is not read from the other eye opening wider", async ({ page }) => {
+  // A difference can also be made by one eye opening *wider* than it usually
+  // sits, which is not a wink. The normalised scale floors at the resting
+  // level, so this shows up as a difference with neither eye closing -- which
+  // is what `shut` is there to refuse.
+  const verdicts = await play(page, [
+    ...settled,
+    { ms: 800, left: 0.30, right: -0.6 },
+    { ms: 900, left: 0.02, right: 0.02 },
+  ]);
+
+  expect(turns(verdicts)).toEqual([]);
+  expect(charged(verdicts)).toEqual([]);
+});
+
+test("opening the eye part way calls the turn off", async ({ page }) => {
+  const verdicts = await play(page, [
+    ...settled,
+    { ms: 350, left: 0.05, right: 0.95 },
+    { ms: 900, left: 0.02, right: 0.02 },
   ]);
 
   expect(turns(verdicts)).toEqual([]);
@@ -126,12 +238,12 @@ test("opening the eye part way calls the turn off", async ({ page }) => {
 });
 
 test("an eye held shut does not walk through the score", async ({ page }) => {
-  // Two seconds of one eye shut: two and a half cooldowns, so a judge that
-  // only had a cooldown and no latch would turn three pages.
+  // Two and a half seconds of one eye shut: three cooldowns, so a judge that
+  // only had a cooldown and no spent rest would turn three pages.
   const verdicts = await play(page, [
-    settled,
-    { ms: 2000, left: 0.05, right: 0.9 },
-    { ms: 600, left: 0.05, right: 0.05 },
+    ...settled,
+    { ms: 2500, left: 0.05, right: 0.95 },
+    { ms: 900, left: 0.02, right: 0.02 },
   ]);
 
   expect(turns(verdicts)).toEqual(["next"]);
@@ -139,13 +251,13 @@ test("an eye held shut does not walk through the score", async ({ page }) => {
 
 test("opening the eye and winking again turns the next page", async ({ page }) => {
   const verdicts = await play(page, [
-    settled,
-    { ms: 500, left: 0.05, right: 0.9 },
+    ...settled,
+    { ms: 700, left: 0.05, right: 0.95 },
     // Long enough to clear the cooldown and settle again, which is what the
     // player is doing anyway while they watch the page move.
-    { ms: 1200, left: 0.05, right: 0.05 },
-    { ms: 500, left: 0.05, right: 0.9 },
-    { ms: 300, left: 0.05, right: 0.05 },
+    { ms: 1400, left: 0.02, right: 0.02 },
+    { ms: 700, left: 0.05, right: 0.95 },
+    { ms: 400, left: 0.02, right: 0.02 },
   ]);
 
   expect(turns(verdicts)).toEqual(["next", "next"]);
@@ -153,11 +265,11 @@ test("opening the eye and winking again turns the next page", async ({ page }) =
 
 test("a wink inside the cooldown is ignored", async ({ page }) => {
   const verdicts = await play(page, [
-    settled,
-    { ms: 500, left: 0.05, right: 0.9 },
-    // Open just long enough to clear the latch, then ask again immediately.
-    { ms: 100, left: 0.05, right: 0.05 },
-    { ms: 500, left: 0.05, right: 0.9 },
+    ...settled,
+    { ms: 700, left: 0.05, right: 0.95 },
+    // Open only briefly, then ask again at once.
+    { ms: 120, left: 0.02, right: 0.02 },
+    { ms: 700, left: 0.05, right: 0.95 },
   ]);
 
   expect(turns(verdicts)).toEqual(["next"]);
@@ -165,11 +277,11 @@ test("a wink inside the cooldown is ignored", async ({ page }) => {
 
 test("each eye asks for its own direction, and the sides can be swapped", async ({ page }) => {
   const spans = [
-    settled,
-    { ms: 500, left: 0.9, right: 0.05 },
-    { ms: 1200, left: 0.05, right: 0.05 },
-    { ms: 500, left: 0.05, right: 0.9 },
-    { ms: 300, left: 0.05, right: 0.05 },
+    ...settled,
+    { ms: 700, left: 0.95, right: 0.05 },
+    { ms: 1400, left: 0.02, right: 0.02 },
+    { ms: 700, left: 0.05, right: 0.95 },
+    { ms: 400, left: 0.02, right: 0.02 },
   ];
 
   expect(turns(await play(page, spans))).toEqual(["prev", "next"]);
@@ -182,23 +294,22 @@ test("each eye asks for its own direction, and the sides can be swapped", async 
 });
 
 test("glancing from one eye to the other starts the gesture over", async ({ page }) => {
-  // 300ms of each: neither reaches the turn, and a judge that carried the
-  // charge from the first eye to the second would turn a page on 600ms of
+  // 350ms of each: neither reaches the turn, and a judge that carried the
+  // charge from the first eye to the second would turn a page on 700ms of
   // something the player never asked for.
   const verdicts = await play(page, [
-    settled,
-    { ms: 300, left: 0.9, right: 0.05 },
-    { ms: 300, left: 0.05, right: 0.9 },
-    { ms: 600, left: 0.05, right: 0.05 },
+    ...settled,
+    { ms: 350, left: 0.95, right: 0.05 },
+    { ms: 350, left: 0.05, right: 0.95 },
+    { ms: 900, left: 0.02, right: 0.02 },
   ]);
 
   expect(turns(verdicts)).toEqual([]);
 });
 
 test("a wink is not read from a face that is not being followed", async ({ page }) => {
-  const held = { ms: 600, left: 0.05, right: 0.9 };
+  const held = { ms: 800, left: 0.05, right: 0.95 };
   const cases = {
-    // No face in the frame at all.
     "no-face": { ...held, face: false },
     // Turned away, as a flute is played: past this angle the eye on the far
     // side is not really being seen, so the difference a wink is read from
@@ -209,22 +320,19 @@ test("a wink is not read from a face that is not being followed", async ({ page 
     // An eye off the edge of the frame. The model fits a whole face even where
     // half of it is missing, so the landmark still arrives, just made up.
     "eye-right-out": { ...held, eyes: { left: { x: 0.4, y: 0.4 }, right: { x: 1.3, y: 0.4 } } },
-    // The model stalled: held times measured a tenth of a second against are
-    // guesswork at three frames a second, so the gesture is refused.
+    // The model stalled: held times measured half a second against are
+    // guesswork at three frames a second.
     slow: { ...held, fps: 3 },
-    // Too far away. The eye scores drift about the middle of their range at
-    // this size whatever the eyes do, so there is nothing to read a wink
-    // from -- measured at 69 px, where five deliberate winks went unread by
-    // every threshold in a grid of 144.
+    // Too far away. Measured at 69 px between the eye centres, where the
+    // scores drifted about the middle of their range whatever the eyes did and
+    // five deliberate winks went unread by every threshold in a grid of 144.
     far: { ...held, sep: 69 },
   };
 
   for (const [why, span] of Object.entries(cases)) {
-    const verdicts = await play(page, [settled, span]);
+    const verdicts = await play(page, [...settled, span]);
     expect(turns(verdicts), why).toEqual([]);
     expect(charged(verdicts), why).toEqual([]);
-    // The last word on it names what was wrong, so the panel can tell the
-    // player which thing to go and fix.
     expect(verdicts.at(-1).track, why).toBe(false);
     expect(verdicts.at(-1).why, why).toBe(why);
   }
@@ -232,104 +340,37 @@ test("a wink is not read from a face that is not being followed", async ({ page 
 
 test("ready says whether a wink made now would be read", async ({ page }) => {
   const verdicts = await play(page, [
-    // The face arrives mid-blink, so it is neither ready nor settled.
-    { ms: 200, left: 0.9, right: 0.9 },
-    { ms: 600, left: 0.05, right: 0.05 },
-    { ms: 300, face: false, left: 0.05, right: 0.05 },
-    { ms: 600, left: 0.05, right: 0.05 },
+    ...settled,
+    { ms: 200, left: 1, right: 1 },
+    { ms: 700, left: 0.02, right: 0.02 },
+    { ms: 300, face: false },
+    { ms: 700, left: 0.02, right: 0.02 },
   ]);
 
-  const why = (ms) => verdicts.find(v => v.t >= 1000 + ms).why;
+  const from = frames(settled).length;
+  const after = (ms) => verdicts.find(v => v.t >= verdicts[from].t + ms).why;
   // Eyes shut; then open but not yet settled; then settled and ready.
-  expect(why(0)).toBe("eyes-shut");
-  expect(why(250)).toBe("settling");
-  expect(why(700)).toBe("ready");
+  expect(after(0)).toBe("eyes-shut");
+  expect(after(300)).toBe("settling");
+  expect(after(800)).toBe("ready");
   // The face goes away and comes back: the rest clock starts again from the
   // frame it came back on, because the eye could have been shut the whole time
   // the face was missing.
-  expect(why(900)).toBe("no-face");
-  expect(why(1200)).toBe("settling");
+  expect(after(1000)).toBe("no-face");
+  expect(after(1300)).toBe("settling");
   expect(verdicts.at(-1).ready).toBe(true);
-  expect(verdicts.at(-1).why).toBe("ready");
 });
 
 test("a wink is not believed until the eyes have rested", async ({ page }) => {
-  // One eye shut from the very first frame: the face was never seen resting,
-  // so this could as easily be a face that arrived mid-blink as a wink.
-  const verdicts = await play(page, [{ ms: 800, left: 0.05, right: 0.9 }]);
-
-  expect(turns(verdicts)).toEqual([]);
-});
-
-test("a face too small to read its eyelids is refused, and says so", async ({ page }) => {
-  // The size is in pixels across the face, not in how much of the frame it
-  // fills: the model crops the face and resizes that crop to its own input, so
-  // a bigger capture of the same distant face is a better reading. A sample
-  // from before this was measured carries no separation, and is taken at its
-  // word rather than refused.
-  const held = { ms: 600, left: 0.05, right: 0.9 };
-  expect(turns(await play(page, [settled, { ...held, sep: 69 }]))).toEqual([]);
-  expect(turns(await play(page, [settled, { ...held, sep: 160 }]))).toEqual(["next"]);
-  const legacy = frames([settled, held]).map(({ sep, ...rest }) => rest);
-  const verdicts = await page.evaluate(([samples, limits]) => {
-    const judge = new window._WinkJudge_(limits);
-    return samples.map(sample => judge.feed(sample));
-  }, [legacy, LIMITS]);
-  expect(verdicts.filter(v => v.turn).map(v => v.turn)).toEqual(["next"]);
-});
-
-test("a wink in the recovery of a blink is treated as the blink", async ({ page }) => {
-  // This is what restMs is for. A blink spends the rest that came before it,
-  // so the wink that follows has to wait for a rest of its own -- otherwise
-  // "blink, then hold one eye" reads as a deliberate wink, which is the
-  // commonest thing a face does by accident.
+  // One eye shut from the moment the range was learnt: the face was never seen
+  // resting, so this could as easily be a face that arrived mid-blink.
   const verdicts = await play(page, [
-    settled,
-    { ms: 150, left: 0.95, right: 0.95 },
-    { ms: 500, left: 0.05, right: 0.9 },
+    { ms: 600, left: 0.02, right: 0.02 },
+    ...blink(),
+    { ms: 900, left: 0.05, right: 0.95 },
   ]);
 
   expect(turns(verdicts)).toEqual([]);
-  // And once the eyes have rested again, the same wink counts.
-  expect(turns(await play(page, [
-    settled,
-    { ms: 150, left: 0.95, right: 0.95 },
-    { ms: 600, left: 0.05, right: 0.05 },
-    { ms: 500, left: 0.05, right: 0.9 },
-  ]))).toEqual(["next"]);
-});
-
-test("the lid passing through the middle of its range still begins a wink", async ({ page }) => {
-  // The other side of the test above: an eye on its way shut is briefly
-  // neither open nor closed, and that must not be read as spending the rest,
-  // or no wink could ever start.
-  const verdicts = await play(page, [
-    settled,
-    { ms: 80, left: 0.05, right: 0.5 },
-    { ms: 500, left: 0.05, right: 0.9 },
-  ]);
-
-  expect(turns(verdicts)).toEqual(["next"]);
-});
-
-test("the ring does not say ready while the cooldown is running", async ({ page }) => {
-  // A green ring means "wink now and it will count". During the cooldown a
-  // wink is thrown away, so saying ready would be inviting the player to make
-  // one for nothing -- and to conclude the whole feature is unreliable.
-  const verdicts = await play(page, [
-    settled,
-    { ms: 500, left: 0.05, right: 0.9 },
-    { ms: 900, left: 0.05, right: 0.05 },
-  ]);
-
-  const fired = verdicts.findIndex(v => v.turn);
-  expect(fired).toBeGreaterThan(-1);
-  const cooling = verdicts.filter(v => v.state == "cooldown");
-  expect(cooling.length).toBeGreaterThan(1);
-  expect(cooling.every(v => v.ready == false)).toBe(true);
-  expect(cooling.every(v => v.why == "cooling")).toBe(true);
-  // And once it has passed, the ring comes back.
-  expect(verdicts.at(-1).ready).toBe(true);
 });
 
 test("a wink cannot be held through a stall", async ({ page }) => {
@@ -338,20 +379,69 @@ test("a wink cannot be held through a stall", async ({ page }) => {
   // longer than it was. A backgrounded tab, a big page being rendered, the
   // model losing its GPU context: the clock runs on through all of them, and
   // what the eye did meanwhile is simply not known.
-  //
-  // So: 150ms of wink, a stall, then 150ms more. Neither half is long enough
-  // to turn a page, and the two together must not be either.
-  const before = frames([settled, { ms: 150, left: 0.05, right: 0.9 }]);
-  const after = frames([{ ms: 150, left: 0.05, right: 0.9 }], { t0: 4000 });
+  const before = frames([...settled, { ms: 300, left: 0.05, right: 0.95 }]);
+  const after = frames([{ ms: 300, left: 0.05, right: 0.95 }],
+    { t0: before.at(-1).t + 4000 });
   const verdicts = await page.evaluate(([samples, limits]) => {
     const judge = new window._WinkJudge_(limits);
     return samples.map(sample => judge.feed(sample));
   }, [[...before, ...after], LIMITS]);
 
   expect(verdicts.filter(v => v.turn)).toEqual([]);
-  // And the gesture starts over rather than carrying on, so the frame after
-  // the stall is back to idle however long the eye had been shut.
   expect(verdicts[before.length].state).toBe("idle");
+});
+
+test("the ring does not say ready while the cooldown is running", async ({ page }) => {
+  // A green ring means "wink now and it will count". During the cooldown a
+  // wink is thrown away, so saying ready would be inviting the player to make
+  // one for nothing -- and to conclude the whole feature is unreliable.
+  const verdicts = await play(page, [
+    ...settled,
+    { ms: 700, left: 0.05, right: 0.95 },
+    { ms: 1000, left: 0.02, right: 0.02 },
+  ]);
+
+  expect(verdicts.some(v => v.turn)).toBe(true);
+  const cooling = verdicts.filter(v => v.state == "cooldown");
+  expect(cooling.length).toBeGreaterThan(1);
+  expect(cooling.every(v => v.ready == false)).toBe(true);
+  expect(cooling.every(v => v.why == "cooling")).toBe(true);
+  expect(verdicts.at(-1).ready).toBe(true);
+});
+
+test("the range follows the player rather than sticking to one session", async ({ page }) => {
+  // The light changes, the player shifts in their seat, the camera gains up:
+  // the readings move wholesale. A fixed threshold would be wrong from then on,
+  // which is the case that made a learnt scale necessary in the first place.
+  //
+  // What it costs is a few seconds of refusing to read anything. Until the
+  // resting window has flushed the old readings, the judge genuinely does not
+  // know where this player's eyes sit any more, and the safe answer to that is
+  // to say so rather than to read a wink against a stale notion of open.
+  const shift = 0.3;
+  const first = frames([...settled, { ms: 700, left: 0.05, right: 0.95 }]);
+  const after = frames([
+    { ms: 7000, left: 0.02, right: 0.02 },
+    ...blink(),
+    { ms: 900, left: 0.02, right: 0.02 },
+    { ms: 700, left: 0.05, right: 0.95 },
+  ], { t0: first.at(-1).t + 70 }).map(sample => ({
+    ...sample, left: sample.left + shift, right: sample.right + shift,
+  }));
+
+  const verdicts = await page.evaluate(([samples, limits]) => {
+    const judge = new window._WinkJudge_(limits);
+    return samples.map(sample => judge.feed(sample));
+  }, [[...first, ...after], LIMITS]);
+
+  // One turn before the shift and one after it, and nothing spurious in
+  // between while the scale was catching up.
+  expect(verdicts.filter(v => v.turn).map(v => v.turn)).toEqual(["next", "next"]);
+  expect(verdicts.at(-1).rest.left).toBeCloseTo(OPEN.left + shift, 1);
+  // It really did take a moment: the frames just after the shift are not ready,
+  // so the ring tells the player to wait rather than letting them wink in vain.
+  const settling = verdicts.slice(first.length, first.length + 30);
+  expect(settling.some(v => !v.ready)).toBe(true);
 });
 
 test("head rotation is read out of the model's matrix in degrees", async ({ page }) => {

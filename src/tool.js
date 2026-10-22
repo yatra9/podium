@@ -2552,6 +2552,7 @@ class Wink {
     }
     .Wink__eye-left .Wink__eye__fill { background: #e08a3c; }
     .Wink__eye-right .Wink__eye__fill { background: #49a9f0; }
+    .Wink__eye-gap .Wink__eye__fill { background: #46bb63; }
     /* Where "shut" and "open" are set, so a score can be read against them. */
     .Wink__eye__tick {
       position: absolute;
@@ -2608,7 +2609,6 @@ class Wink {
         <div class="Wink__eye__bar">
           <div data-tag="leftFill" class="Wink__eye__fill"></div>
           <div data-tag="leftShut" class="Wink__eye__tick"></div>
-          <div data-tag="leftOpen" class="Wink__eye__tick"></div>
         </div>
         <div data-tag="leftScore" class="Wink__eye__score" translate="no">--</div>
       </div>
@@ -2617,9 +2617,18 @@ class Wink {
         <div class="Wink__eye__bar">
           <div data-tag="rightFill" class="Wink__eye__fill"></div>
           <div data-tag="rightShut" class="Wink__eye__tick"></div>
-          <div data-tag="rightOpen" class="Wink__eye__tick"></div>
         </div>
         <div data-tag="rightScore" class="Wink__eye__score" translate="no">--</div>
+      </div>
+      <!-- The number a wink is actually read from: how far apart the two
+           normalised eyes are, against the difference a wink needs. -->
+      <div class="Wink__eye Wink__eye-gap">
+        <div class="Wink__eye__name">Difference</div>
+        <div class="Wink__eye__bar">
+          <div data-tag="gapFill" class="Wink__eye__fill"></div>
+          <div data-tag="gapStart" class="Wink__eye__tick"></div>
+        </div>
+        <div data-tag="gapScore" class="Wink__eye__score" translate="no">--</div>
       </div>
       <canvas data-tag="trace" class="Wink__trace" width="480" height="140"></canvas>
       <div data-tag="read" class="Wink__read" translate="no">&nbsp;</div>
@@ -2731,8 +2740,8 @@ class Wink {
     let count = (words, unit) => (tag, value) =>
       `${words} ${noTranslate(Math.round(value) + unit)}`;
     this.limitsGroup = new SliderGroup(this.stash, {
-      closed: { min: .35, max: .95, step: .05, msg: score("An eye counts as shut at") },
-      open: { min: .05, max: .6, step: .05, msg: score("The other must stay under") },
+      start: { min: .05, max: .6, step: .01, msg: score("Eyes must differ by") },
+      shut: { min: .1, max: .8, step: .05, msg: score("Winking eye must reach") },
       showMs: { min: 50, max: 400, step: 25, msg: count("Gauge appears after", " ms") },
       fireMs: { min: 150, max: 900, step: 25, msg: count("Page turns after", " ms") },
       cooldownMs: { min: 300, max: 2000, step: 100, msg: count("Then waits", " ms") },
@@ -2901,10 +2910,9 @@ class Wink {
       if (stream) this.preview.play().catch(() => {});
     }
 
-    for (let name of ["left", "right"]) {
-      this[name + "Shut"].style.left = `${this.stash.closed * 100}%`;
-      this[name + "Open"].style.left = `${this.stash.open * 100}%`;
-    }
+    for (let name of ["left", "right"])
+      this[name + "Shut"].style.left = `${this.stash.shut * 100}%`;
+    this.gapStart.style.left = `${this.stash.start * 100}%`;
 
     let log = turner.log;
     this.count.textContent = !log?.rows.length ? "Nothing recorded yet."
@@ -2918,7 +2926,9 @@ class Wink {
         : turner.status == "unsupported" || turner.status == "failed" ? turner.detail
         : "Wink is off.";
       this.leftScore.textContent = this.rightScore.textContent = "--";
+      this.gapScore.textContent = "--";
       this.leftFill.style.width = this.rightFill.style.width = "0";
+      this.gapFill.style.width = "0";
       this.read.innerHTML = "&nbsp;";
       this.history.length = 0;
       this.drawTrace();
@@ -2928,10 +2938,16 @@ class Wink {
   // One frame. This runs fifteen times a second, so it only touches text and
   // widths and draws one small canvas.
   drew(sample, verdict) {
-    this.leftFill.style.width = `${Math.round(sample.left * 100)}%`;
-    this.rightFill.style.width = `${Math.round(sample.right * 100)}%`;
-    this.leftScore.textContent = sample.left.toFixed(2);
-    this.rightScore.textContent = sample.right.toFixed(2);
+    // Normalised, against this player's own range: the raw scores never come
+    // near either end of 0..1 and move from device to device, so a bar drawn
+    // from them says nothing a reader could act on.
+    let norm = verdict.norm ?? { left: 0, right: 0 };
+    this.leftFill.style.width = `${Math.round(norm.left * 100)}%`;
+    this.rightFill.style.width = `${Math.round(norm.right * 100)}%`;
+    this.gapFill.style.width = `${Math.round(Math.abs(verdict.gap ?? 0) * 100)}%`;
+    this.leftScore.textContent = norm.left.toFixed(2);
+    this.rightScore.textContent = norm.right.toFixed(2);
+    this.gapScore.textContent = (verdict.gap ?? 0).toFixed(2);
 
     this.lamp.classList.toggle("Wink__lamp-ready", verdict.ready);
     this.lamp.classList.toggle("Wink__lamp-held", verdict.track && !verdict.ready);
@@ -2940,15 +2956,22 @@ class Wink {
     // The eye separation leads, because it is the number that decides whether
     // any of the rest can be believed: too few pixels across the face and the
     // eye scores drift about the middle of their range whatever the eyes do.
+    // The learnt range leads when there is one: every other number on this tab
+    // is measured against it, and watching it settle is how a reader can tell
+    // the scale has been found.
+    let range = verdict.rest && verdict.peak
+      ? `open ${verdict.rest.left.toFixed(2)}/${verdict.rest.right.toFixed(2)}`
+        + ` shut ${verdict.peak.left.toFixed(2)}/${verdict.peak.right.toFixed(2)}`
+      : "learning the range";
     this.read.textContent = sample.face
-      ? `eyes ${Math.round(sample.sep ?? 0)} px apart`
+      ? `${range}  ${Math.round(sample.sep ?? 0)} px`
         + `  yaw ${Math.round(sample.yaw)}°  pitch ${Math.round(sample.pitch)}°`
-        + `  lean ${Math.round(sample.roll)}°  ${Math.round(sample.fps)} fps`
-        + `  ${this.turner.asks} winks`
+        + `  ${Math.round(sample.fps)} fps  ${this.turner.asks} winks`
       : `no face  ${Math.round(sample.fps)} fps`;
 
     this.history.push({
-      t: sample.t, left: sample.left, right: sample.right,
+      t: sample.t, left: norm.left, right: norm.right,
+      gap: Math.abs(verdict.gap ?? 0),
       state: verdict.state, turn: !!verdict.turn,
     });
     let from = sample.t - Wink.traceMs;
@@ -2972,7 +2995,7 @@ class Wink {
     // Where the page would turn, and where an eye stops counting as open.
     ctx.setLineDash([4, 4]);
     ctx.lineWidth = 1;
-    for (let [score, colour] of [[this.stash.closed, "#d08a3a"], [this.stash.open, "#6f6f6f"]]) {
+    for (let [score, colour] of [[this.stash.start, "#46bb63"], [this.stash.shut, "#6f6f6f"]]) {
       ctx.strokeStyle = colour;
       ctx.beginPath();
       ctx.moveTo(0, up(score));
@@ -2995,7 +3018,7 @@ class Wink {
       if (row.turn) ctx.fillRect(at(row.t) - 1.5, 0, 3, h);
 
     ctx.lineWidth = 2;
-    for (let [key, colour] of [["left", "#e08a3c"], ["right", "#49a9f0"]]) {
+    for (let [key, colour] of [["left", "#e08a3c"], ["right", "#49a9f0"], ["gap", "#46bb63"]]) {
       ctx.strokeStyle = colour;
       ctx.beginPath();
       this.history.forEach((row, i) => {
@@ -3020,6 +3043,7 @@ class Wink {
   // The judge's reasons, as something to read. Keyed by WinkJudge's why.
   static says = {
     ready: "Ready -- a wink now would count.",
+    learning: "Learning your eyes. Blink a few times.",
     settling: "Settling: open both eyes for a moment.",
     "eye-shut": "One eye is shut.",
     "eyes-shut": "Both eyes are shut -- that is a blink, and it is ignored.",

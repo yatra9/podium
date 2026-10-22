@@ -60,6 +60,12 @@ lib/pdf-lib.js
 # a checkout without them still builds and still runs.
 lib/mediapipe/
 
+# Wink recordings to replay the judge against. They hold no picture, but they
+# do hold a few hundred rows of measurements of somebody's face, so whether any
+# given one gets published is the person's decision and not the repository's.
+# tests/wink-replay.spec.js skips when there are none.
+tests/recordings/
+
 # AI review / notes files
 GEMINI.md
 CLAUDE_REVIEW.md
