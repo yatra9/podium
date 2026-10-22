@@ -84,6 +84,21 @@ const WINK_LIMITS = {
   // An eye landmark this far outside the frame is not being seen. In fractions
   // of the frame, so it is independent of the capture size.
   margin: 0.02,
+  // How many pixels apart the eyes must be before the lids can be read at all.
+  //
+  // This is the one that decides whether the whole gesture is possible, and it
+  // is in pixels rather than in fractions of the frame on purpose: the model
+  // crops the face out of the captured image and resizes that crop to its own
+  // input, so what it has to work with is the number of pixels across the
+  // face, not the share of the frame the face takes up.
+  //
+  // Measured, not guessed: a recording at 69 px between the eye centres gave
+  // eyeBlink scores that sat around 0.45 whatever the eyes did, eyeWide that
+  // never left zero, and five deliberate winks that no threshold in a grid of
+  // 144 could pick out. The lid aperture is only a few pixels at that size.
+  // 110 is above that and below nothing yet proven to work, so it is a floor
+  // to argue with once there is a recording that does work.
+  sepMin: 110,
   // Below this many frames a second the held times are too coarse to measure a
   // tenth of a second against, so the gesture is refused rather than guessed.
   fpsMin: 7,
@@ -214,6 +229,13 @@ class WinkJudge {
       eye && (eye.x < -m || eye.x > 1 + m || eye.y < -m || eye.y > 1 + m);
     if (out(sample.eyes?.left)) return (this.trackWhy = "eye-left-out"), false;
     if (out(sample.eyes?.right)) return (this.trackWhy = "eye-right-out"), false;
+    // A face too small to resolve the lids gives eye scores that drift about
+    // the middle of the range and never answer. Refusing it is the only
+    // honest reading: there is nothing to tell a wink from a blink with.
+    // Samples from before this was measured carry no separation at all, and
+    // are taken at their word.
+    if (sample.sep != null && sample.sep < L.sepMin)
+      return (this.trackWhy = "far"), false;
     if (Math.abs(sample.yaw ?? 0) > L.yawMax) return (this.trackWhy = "turned"), false;
     if (Math.abs(sample.pitch ?? 0) > L.pitchMax) return (this.trackWhy = "tilted"), false;
     if (Math.abs(sample.roll ?? 0) > L.rollMax) return (this.trackWhy = "rolled"), false;
@@ -514,7 +536,13 @@ class WinkWatch {
         audio: false,
         video: {
           ...(deviceId ? { deviceId: { exact: deviceId } } : { facingMode: "user" }),
-          width: { ideal: 640 }, height: { ideal: 480 },
+          // A tablet on a music stand is half a metre or more from the
+          // player's face, and a front camera is wide: the face lands small
+          // in the frame whatever is asked for. The model crops the face and
+          // resizes that crop to its own input, so the only way to give it
+          // more to work with at that distance is to capture more pixels.
+          // 640x480 measurably was not enough -- see sepMin.
+          width: { ideal: 1280 }, height: { ideal: 720 },
         },
       });
       // Everything this attempt made, let go of. Not stop(): by the time a
@@ -681,12 +709,22 @@ class WinkWatch {
       };
     };
 
+    // How many pixels apart the eye centres are: the measure of how much of
+    // the face the model actually had to look at. Landmarks are fractions of
+    // the frame, so this needs the captured size to mean anything.
+    let eyes = { left: centre("left"), right: centre("right") };
+    let sep = eyes.left && eyes.right
+      ? Math.hypot((eyes.left.x - eyes.right.x) * (this.video.videoWidth || 0),
+                   (eyes.left.y - eyes.right.y) * (this.video.videoHeight || 0))
+      : undefined;
+
     return {
       t,
       face: true,
       left: this.blink.left < 0 ? 0 : this.shapes[this.blink.left],
       right: this.blink.right < 0 ? 0 : this.shapes[this.blink.right],
-      eyes: { left: centre("left"), right: centre("right") },
+      eyes,
+      sep,
       ...winkPose(result.facialTransformationMatrixes?.[0]),
       fps: this.rate,
     };
@@ -739,6 +777,7 @@ class WinkLog {
       yaw: sample.yaw ?? 0, pitch: sample.pitch ?? 0, roll: sample.roll ?? 0,
       eyeLeftX: sample.eyes?.left?.x ?? "", eyeLeftY: sample.eyes?.left?.y ?? "",
       eyeRightX: sample.eyes?.right?.x ?? "", eyeRightY: sample.eyes?.right?.y ?? "",
+      sep: sample.sep ?? "",
       fps: sample.fps ?? 0,
       track: verdict.track ? 1 : 0,
       ready: verdict.ready ? 1 : 0,
@@ -765,7 +804,7 @@ class WinkLog {
   // it beside the numbers it was read from, so a spreadsheet can plot either.
   toCsv() {
     let plain = ["t", "mark", "face", "left", "right", "yaw", "pitch", "roll",
-      "eyeLeftX", "eyeLeftY", "eyeRightX", "eyeRightY", "fps",
+      "eyeLeftX", "eyeLeftY", "eyeRightX", "eyeRightY", "sep", "fps",
       "track", "ready", "why", "state", "direction", "progress", "turn"];
     let round = (value) => typeof value == "number" ? +value.toFixed(5) : value;
     let out = [[...plain, ...(this.names ?? [])].join(",")];
@@ -877,7 +916,10 @@ class WinkHud {
 
   constructor() {
     Object.assign(this, dataIndex("tag", this.elm));
-    this.elm.style.fontSize = _menu_.elm.style.fontSize;
+    // The menu's font size is the app's scale. Through window, and optional,
+    // for the same reason as WinkTurner's stash.
+    let scale = window._menu_?.elm?.style?.fontSize;
+    if (scale) this.elm.style.fontSize = scale;
     _body_.append(this.elm);
     this.said = "";
     this.saidAt = 0;
@@ -974,7 +1016,10 @@ class WinkTurner {
     this.watchers = new Set();
   }
 
-  get stash() { return _menu_?.rings?.more?.cells?.wink?.stash ?? {}; }
+  // Reached through window: _menu_ is assigned by main.js at startup, and a
+  // bare name would throw a ReferenceError rather than read as absent if
+  // anything asked for a wink before the menu was built.
+  get stash() { return window._menu_?.rings?.more?.cells?.wink?.stash ?? {}; }
   get running() { return this.watch.running; }
   get status() { return this.watch.status; }
   get detail() { return this.watch.detail; }
@@ -985,7 +1030,7 @@ class WinkTurner {
   limits() {
     let limits = {};
     for (let key of ["closed", "open", "showMs", "fireMs", "cooldownMs",
-                     "restMs", "yawMax", "pitchMax", "rollMax"])
+                     "restMs", "yawMax", "pitchMax", "rollMax", "sepMin"])
       if (typeof this.stash[key] == "number") limits[key] = this.stash[key];
     return limits;
   }

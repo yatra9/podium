@@ -2740,6 +2740,7 @@ class Wink {
       yawMax: { min: 8, max: 70, step: 2, msg: count("Head may be turned", "°") },
       pitchMax: { min: 8, max: 70, step: 2, msg: count("Head may be tilted", "°") },
       rollMax: { min: 8, max: 70, step: 2, msg: count("Head may be leaned", "°") },
+      sepMin: { min: 40, max: 260, step: 5, msg: count("Eyes must be at least", " px apart") },
     }, () => this.tuned());
     this.limitsGroupElm.replace(this.limitsGroup.elm);
     this.limitsGroup.refresh();
@@ -2936,8 +2937,12 @@ class Wink {
     this.lamp.classList.toggle("Wink__lamp-held", verdict.track && !verdict.ready);
     this.lampText.textContent = Wink.says[verdict.why] ?? verdict.why;
 
+    // The eye separation leads, because it is the number that decides whether
+    // any of the rest can be believed: too few pixels across the face and the
+    // eye scores drift about the middle of their range whatever the eyes do.
     this.read.textContent = sample.face
-      ? `yaw ${Math.round(sample.yaw)}°  pitch ${Math.round(sample.pitch)}°`
+      ? `eyes ${Math.round(sample.sep ?? 0)} px apart`
+        + `  yaw ${Math.round(sample.yaw)}°  pitch ${Math.round(sample.pitch)}°`
         + `  lean ${Math.round(sample.roll)}°  ${Math.round(sample.fps)} fps`
         + `  ${this.turner.asks} winks`
       : `no face  ${Math.round(sample.fps)} fps`;
@@ -3024,7 +3029,9 @@ class Wink {
     turned: "Your head is turned too far to read a wink from.",
     tilted: "Your head is tilted too far to read a wink from.",
     rolled: "Your head is leaned too far to read a wink from.",
-      slow: "The model is running too slowly to time a wink.",
+      far: "Too far from the camera to read your eyelids. Come closer, or bring "
+      + "the camera closer.",
+    slow: "The model is running too slowly to time a wink.",
     cooling: "Just turned a page -- waiting a moment.",
   };
 }

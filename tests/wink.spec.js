@@ -19,7 +19,7 @@ test.beforeEach(async ({ page }) => {
 
 const LIMITS = {
   closed: 0.7, open: 0.3, showMs: 100, fireMs: 400,
-  cooldownMs: 800, restMs: 400, fpsMin: 7, gapMs: 250,
+  cooldownMs: 800, restMs: 400, fpsMin: 7, gapMs: 250, sepMin: 110,
 };
 
 // A run of frames at a steady rate. Each span is a stretch of time the face
@@ -35,7 +35,7 @@ function frames(spans, { fps = 15, t0 = 1000 } = {}) {
       out.push({
         t: Math.round(t), face: true, left: 0, right: 0, fps,
         eyes: { left: { x: 0.4, y: 0.4 }, right: { x: 0.6, y: 0.4 } },
-        yaw: 0, pitch: 0, roll: 0,
+        sep: 160, yaw: 0, pitch: 0, roll: 0,
         ...sample,
       });
       t += step;
@@ -212,6 +212,11 @@ test("a wink is not read from a face that is not being followed", async ({ page 
     // The model stalled: held times measured a tenth of a second against are
     // guesswork at three frames a second, so the gesture is refused.
     slow: { ...held, fps: 3 },
+    // Too far away. The eye scores drift about the middle of their range at
+    // this size whatever the eyes do, so there is nothing to read a wink
+    // from -- measured at 69 px, where five deliberate winks went unread by
+    // every threshold in a grid of 144.
+    far: { ...held, sep: 69 },
   };
 
   for (const [why, span] of Object.entries(cases)) {
@@ -254,6 +259,23 @@ test("a wink is not believed until the eyes have rested", async ({ page }) => {
   const verdicts = await play(page, [{ ms: 800, left: 0.05, right: 0.9 }]);
 
   expect(turns(verdicts)).toEqual([]);
+});
+
+test("a face too small to read its eyelids is refused, and says so", async ({ page }) => {
+  // The size is in pixels across the face, not in how much of the frame it
+  // fills: the model crops the face and resizes that crop to its own input, so
+  // a bigger capture of the same distant face is a better reading. A sample
+  // from before this was measured carries no separation, and is taken at its
+  // word rather than refused.
+  const held = { ms: 600, left: 0.05, right: 0.9 };
+  expect(turns(await play(page, [settled, { ...held, sep: 69 }]))).toEqual([]);
+  expect(turns(await play(page, [settled, { ...held, sep: 160 }]))).toEqual(["next"]);
+  const legacy = frames([settled, held]).map(({ sep, ...rest }) => rest);
+  const verdicts = await page.evaluate(([samples, limits]) => {
+    const judge = new window._WinkJudge_(limits);
+    return samples.map(sample => judge.feed(sample));
+  }, [legacy, LIMITS]);
+  expect(verdicts.filter(v => v.turn).map(v => v.turn)).toEqual(["next"]);
 });
 
 test("a wink in the recovery of a blink is treated as the blink", async ({ page }) => {
